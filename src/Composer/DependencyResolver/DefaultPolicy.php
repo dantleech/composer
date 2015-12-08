@@ -15,7 +15,7 @@ namespace Composer\DependencyResolver;
 use Composer\Package\PackageInterface;
 use Composer\Package\AliasPackage;
 use Composer\Package\BasePackage;
-use Composer\Package\LinkConstraint\VersionConstraint;
+use Composer\Semver\Constraint\Constraint;
 
 /**
  * @author Nils Adermann <naderman@naderman.de>
@@ -24,10 +24,12 @@ use Composer\Package\LinkConstraint\VersionConstraint;
 class DefaultPolicy implements PolicyInterface
 {
     private $preferStable;
+    private $preferLowest;
 
-    public function __construct($preferStable = false)
+    public function __construct($preferStable = false, $preferLowest = false)
     {
         $this->preferStable = $preferStable;
+        $this->preferLowest = $preferLowest;
     }
 
     public function versionCompare(PackageInterface $a, PackageInterface $b, $operator)
@@ -36,8 +38,8 @@ class DefaultPolicy implements PolicyInterface
             return BasePackage::$stabilities[$stabA] < BasePackage::$stabilities[$stabB];
         }
 
-        $constraint = new VersionConstraint($operator, $b->getVersion());
-        $version = new VersionConstraint('==', $a->getVersion());
+        $constraint = new Constraint($operator, $b->getVersion());
+        $version = new Constraint('==', $a->getVersion());
 
         return $constraint->matchSpecific($version, true);
     }
@@ -60,7 +62,17 @@ class DefaultPolicy implements PolicyInterface
         return $pool->getPriority($package->getRepository());
     }
 
+    /**
+     * @deprecated Method has been renamed to selectPreferredPackages, you should update usages
+     */
     public function selectPreferedPackages(Pool $pool, array $installedMap, array $literals, $requiredPackage = null)
+    {
+        trigger_error('Method selectPreferedPackages is deprecated and replaced by selectPreferredPackages, please update your usage', E_USER_DEPRECATED);
+
+        return $this->selectPreferredPackages($pool, $installedMap, $literals, $requiredPackage);
+    }
+
+    public function selectPreferredPackages(Pool $pool, array $installedMap, array $literals, $requiredPackage = null)
     {
         $packages = $this->groupLiteralsByNamePreferInstalled($pool, $installedMap, $literals);
 
@@ -72,9 +84,9 @@ class DefaultPolicy implements PolicyInterface
         }
 
         foreach ($packages as &$literals) {
-            $literals = $this->pruneToBestVersion($pool, $literals);
-
             $literals = $this->pruneToHighestPriorityOrInstalled($pool, $installedMap, $literals);
+
+            $literals = $this->pruneToBestVersion($pool, $literals);
 
             $literals = $this->pruneRemoteAliases($pool, $literals);
         }
@@ -151,18 +163,18 @@ class DefaultPolicy implements PolicyInterface
             }
 
             // priority equal, sort by package id to make reproducible
-            if ($a->getId() === $b->getId()) {
+            if ($a->id === $b->id) {
                 return 0;
             }
 
-            return ($a->getId() < $b->getId()) ? -1 : 1;
+            return ($a->id < $b->id) ? -1 : 1;
         }
 
-        if (isset($installedMap[$a->getId()])) {
+        if (isset($installedMap[$a->id])) {
             return -1;
         }
 
-        if (isset($installedMap[$b->getId()])) {
+        if (isset($installedMap[$b->id])) {
             return 1;
         }
 
@@ -184,7 +196,7 @@ class DefaultPolicy implements PolicyInterface
         foreach ($source->getReplaces() as $link) {
             if ($link->getTarget() === $target->getName()
 //                && (null === $link->getConstraint() ||
-//                $link->getConstraint()->matches(new VersionConstraint('==', $target->getVersion())))) {
+//                $link->getConstraint()->matches(new Constraint('==', $target->getVersion())))) {
                 ) {
                 return true;
             }
@@ -195,6 +207,7 @@ class DefaultPolicy implements PolicyInterface
 
     protected function pruneToBestVersion(Pool $pool, $literals)
     {
+        $operator = $this->preferLowest ? '<' : '>';
         $bestLiterals = array($literals[0]);
         $bestPackage = $pool->literalToPackage($literals[0]);
         foreach ($literals as $i => $literal) {
@@ -204,7 +217,7 @@ class DefaultPolicy implements PolicyInterface
 
             $package = $pool->literalToPackage($literal);
 
-            if ($this->versionCompare($package, $bestPackage, '>')) {
+            if ($this->versionCompare($package, $bestPackage, $operator)) {
                 $bestPackage = $package;
                 $bestLiterals = array($literal);
             } elseif ($this->versionCompare($package, $bestPackage, '==')) {
@@ -213,26 +226,6 @@ class DefaultPolicy implements PolicyInterface
         }
 
         return $bestLiterals;
-    }
-
-    protected function selectNewestPackages(array $installedMap, array $literals)
-    {
-        $maxLiterals = array($literals[0]);
-        $maxPackage = $literals[0]->getPackage();
-        foreach ($literals as $i => $literal) {
-            if (0 === $i) {
-                continue;
-            }
-
-            if ($this->versionCompare($literal->getPackage(), $maxPackage, '>')) {
-                $maxPackage = $literal->getPackage();
-                $maxLiterals = array($literal);
-            } elseif ($this->versionCompare($literal->getPackage(), $maxPackage, '==')) {
-                $maxLiterals[] = $literal;
-            }
-        }
-
-        return $maxLiterals;
     }
 
     /**
@@ -247,7 +240,7 @@ class DefaultPolicy implements PolicyInterface
         foreach ($literals as $literal) {
             $package = $pool->literalToPackage($literal);
 
-            if (isset($installedMap[$package->getId()])) {
+            if (isset($installedMap[$package->id])) {
                 $selected[] = $literal;
                 continue;
             }

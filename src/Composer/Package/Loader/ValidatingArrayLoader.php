@@ -14,8 +14,8 @@ namespace Composer\Package\Loader;
 
 use Composer\Package;
 use Composer\Package\BasePackage;
-use Composer\Package\LinkConstraint\VersionConstraint;
-use Composer\Package\Version\VersionParser;
+use Composer\Semver\Constraint\Constraint;
+use Composer\Semver\VersionParser;
 use Composer\Repository\PlatformRepository;
 
 /**
@@ -58,8 +58,8 @@ class ValidatingArrayLoader implements LoaderInterface
             try {
                 $this->versionParser->normalize($this->config['version']);
             } catch (\Exception $e) {
-                unset($this->config['version']);
                 $this->errors[] = 'version : invalid value ('.$this->config['version'].'): '.$e->getMessage();
+                unset($this->config['version']);
             }
         }
 
@@ -70,7 +70,7 @@ class ValidatingArrayLoader implements LoaderInterface
         $this->validateArray('scripts'); // TODO validate event names & listener syntax
         $this->validateString('description');
         $this->validateUrl('homepage');
-        $this->validateFlatArray('keywords', '[A-Za-z0-9 ._-]+');
+        $this->validateFlatArray('keywords', '[\p{N}\p{L} ._-]+');
 
         if (isset($this->config['license'])) {
             if (is_string($this->config['license'])) {
@@ -121,7 +121,7 @@ class ValidatingArrayLoader implements LoaderInterface
         }
 
         if ($this->validateArray('support') && !empty($this->config['support'])) {
-            foreach (array('issues', 'forum', 'wiki', 'source', 'email', 'irc') as $key) {
+            foreach (array('issues', 'forum', 'wiki', 'source', 'email', 'irc', 'docs') as $key) {
                 if (isset($this->config['support'][$key]) && !is_string($this->config['support'][$key])) {
                     $this->errors[] = 'support.'.$key.' : invalid value, must be a string';
                     unset($this->config['support'][$key]);
@@ -138,7 +138,7 @@ class ValidatingArrayLoader implements LoaderInterface
                 unset($this->config['support']['irc']);
             }
 
-            foreach (array('issues', 'forum', 'wiki', 'source') as $key) {
+            foreach (array('issues', 'forum', 'wiki', 'source', 'docs') as $key) {
                 if (isset($this->config['support'][$key]) && !$this->filterUrl($this->config['support'][$key])) {
                     $this->warnings[] = 'support.'.$key.' : invalid value ('.$this->config['support'][$key].'), must be an http/https URL';
                     unset($this->config['support'][$key]);
@@ -149,7 +149,7 @@ class ValidatingArrayLoader implements LoaderInterface
             }
         }
 
-        $unboundConstraint = new VersionConstraint('=', $this->versionParser->normalize('dev-master'));
+        $unboundConstraint = new Constraint('=', $this->versionParser->normalize('dev-master'));
 
         foreach (array_keys(BasePackage::$supportedLinkTypes) as $linkType) {
             if ($this->validateArray($linkType) && isset($this->config[$linkType])) {
@@ -200,7 +200,7 @@ class ValidatingArrayLoader implements LoaderInterface
         }
 
         if ($this->validateArray('autoload') && !empty($this->config['autoload'])) {
-            $types = array('psr-0', 'psr-4', 'classmap', 'files');
+            $types = array('psr-0', 'psr-4', 'classmap', 'files', 'exclude-from-classmap');
             foreach ($this->config['autoload'] as $type => $typeConfig) {
                 if (!in_array($type, $types)) {
                     $this->errors[] = 'autoload : invalid value ('.$type.'), must be one of '.implode(', ', $types);
@@ -250,6 +250,17 @@ class ValidatingArrayLoader implements LoaderInterface
                     $validatedTargetBranch = $this->versionParser->normalizeBranch(substr($targetBranch, 0, -4));
                     if ('-dev' !== substr($validatedTargetBranch, -4)) {
                         $this->warnings[] = 'extra.branch-alias.'.$sourceBranch.' : the target branch ('.$targetBranch.') must be a parseable number like 2.0-dev';
+                        unset($this->config['extra']['branch-alias'][$sourceBranch]);
+
+                        continue;
+                    }
+
+                    // If using numeric aliases ensure the alias is a valid subversion
+                    if (($sourcePrefix = $this->versionParser->parseNumericAliasPrefix($sourceBranch))
+                        && ($targetPrefix = $this->versionParser->parseNumericAliasPrefix($targetBranch))
+                        && (stripos($targetPrefix, $sourcePrefix) !== 0)
+                    ) {
+                        $this->warnings[] = 'extra.branch-alias.'.$sourceBranch.' : the target branch ('.$targetBranch.') is not a valid numeric alias for this version';
                         unset($this->config['extra']['branch-alias'][$sourceBranch]);
                     }
                 }

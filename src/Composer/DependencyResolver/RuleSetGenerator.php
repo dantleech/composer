@@ -15,6 +15,7 @@ namespace Composer\DependencyResolver;
 use Composer\Package\PackageInterface;
 use Composer\Package\AliasPackage;
 use Composer\IO\WorkTracker\WorkTrackerInterface;
+use Composer\Repository\PlatformRepository;
 
 /**
  * @author Nils Adermann <naderman@naderman.de>
@@ -53,17 +54,17 @@ class RuleSetGenerator
      */
     protected function createRequireRule(PackageInterface $package, array $providers, $reason, $reasonData = null)
     {
-        $literals = array(-$package->getId());
+        $literals = array(-$package->id);
 
         foreach ($providers as $provider) {
             // self fulfilling rule?
             if ($provider === $package) {
                 return null;
             }
-            $literals[] = $provider->getId();
+            $literals[] = $provider->id;
         }
 
-        return new Rule($this->pool, $literals, $reason, $reasonData);
+        return new Rule($literals, $reason, $reasonData);
     }
 
     /**
@@ -82,10 +83,10 @@ class RuleSetGenerator
     {
         $literals = array();
         foreach ($packages as $package) {
-            $literals[] = $package->getId();
+            $literals[] = $package->id;
         }
 
-        return new Rule($this->pool, $literals, $reason, $job['packageName'], $job);
+        return new Rule($literals, $reason, $job['packageName'], $job);
     }
 
     /**
@@ -101,7 +102,7 @@ class RuleSetGenerator
      */
     protected function createRemoveRule(PackageInterface $package, $reason, $job)
     {
-        return new Rule($this->pool, array(-$package->getId()), $reason, $job['packageName'], $job);
+        return new Rule(array(-$package->id), $reason, $job['packageName'], $job);
     }
 
     /**
@@ -125,7 +126,7 @@ class RuleSetGenerator
             return null;
         }
 
-        return new Rule($this->pool, array(-$issuer->getId(), -$provider->getId()), $reason, $reasonData);
+        return new Rule(array(-$issuer->id, -$provider->id), $reason, $reasonData);
     }
 
     /**
@@ -156,11 +157,11 @@ class RuleSetGenerator
         while (!$workQueue->isEmpty()) {
 
             $package = $workQueue->dequeue();
-            if (isset($this->whitelistedMap[$package->getId()])) {
+            if (isset($this->whitelistedMap[$package->id])) {
                 continue;
             }
 
-            $this->whitelistedMap[$package->getId()] = true;
+            $this->whitelistedMap[$package->id] = true;
 
             foreach ($package->getRequires() as $link) {
                 $possibleRequires = $this->pool->whatProvides($link->getTarget(), $link->getConstraint(), true);
@@ -187,7 +188,7 @@ class RuleSetGenerator
         $this->workTracker->complete();
     }
 
-    protected function addRulesForPackage(PackageInterface $package)
+    protected function addRulesForPackage(PackageInterface $package, $ignorePlatformReqs)
     {
         $workQueue = new \SplQueue;
         $workQueue->enqueue($package);
@@ -196,13 +197,17 @@ class RuleSetGenerator
 
         while (!$workQueue->isEmpty()) {
             $package = $workQueue->dequeue();
-            if (isset($this->addedMap[$package->getId()])) {
+            if (isset($this->addedMap[$package->id])) {
                 continue;
             }
 
-            $this->addedMap[$package->getId()] = true;
+            $this->addedMap[$package->id] = true;
 
             foreach ($package->getRequires() as $link) {
+                if ($ignorePlatformReqs && preg_match(PlatformRepository::PLATFORM_PACKAGE_REGEX, $link->getTarget())) {
+                    continue;
+                }
+
                 $possibleRequires = $this->pool->whatProvides($link->getTarget(), $link->getConstraint());
 
                 $this->addRule(RuleSet::TYPE_PACKAGE, $rule = $this->createRequireRule($package, $possibleRequires, Rule::RULE_PACKAGE_REQUIRES, $link));
@@ -221,7 +226,7 @@ class RuleSetGenerator
             }
 
             // check obsoletes and implicit obsoletes of a package
-            $isInstalled = (isset($this->installedMap[$package->getId()]));
+            $isInstalled = (isset($this->installedMap[$package->id]));
 
             foreach ($package->getReplaces() as $link) {
                 $obsoleteProviders = $this->pool->whatProvides($link->getTarget(), $link->getConstraint());
@@ -273,34 +278,6 @@ class RuleSetGenerator
         return $impossible;
     }
 
-    /**
-     * Adds all rules for all update packages of a given package
-     *
-     * @param PackageInterface $package Rules for this package's updates are to
-     *                                  be added
-     */
-    private function addRulesForUpdatePackages(PackageInterface $package)
-    {
-        $updates = $this->policy->findUpdatePackages($this->pool, $this->installedMap, $package);
-
-        foreach ($updates as $update) {
-            $this->addRulesForPackage($update);
-        }
-    }
-
-    private function whitelistFromUpdatePackages(PackageInterface $package)
-    {
-        $updates = $this->policy->findUpdatePackages($this->pool, $this->installedMap, $package, true);
-        $this->workTracker->createBound('Whitelist from update packages', count($updates));
-
-        foreach ($updates as $update) {
-            $this->whitelistFromPackage($update);
-            $this->workTracker->ping();
-        }
-
-        $this->workTracker->complete();
-    }
-
     protected function whitelistFromJobs()
     {
         $this->workTracker->createBound('Whitelist from jobs', count($this->jobs));
@@ -319,17 +296,21 @@ class RuleSetGenerator
         $this->workTracker->complete();
     }
 
-    protected function addRulesForJobs()
+    protected function addRulesForJobs($ignorePlatformReqs)
     {
         $this->workTracker->createBound('Add rules for jobs', count($this->jobs));
         foreach ($this->jobs as $job) {
             switch ($job['cmd']) {
                 case 'install':
+                    if (!$job['fixed'] && $ignorePlatformReqs && preg_match(PlatformRepository::PLATFORM_PACKAGE_REGEX, $job['packageName'])) {
+                        continue;
+                    }
+
                     $packages = $this->pool->whatProvides($job['packageName'], $job['constraint']);
                     if ($packages) {
                         foreach ($packages as $package) {
-                            if (!isset($this->installedMap[$package->getId()])) {
-                                $this->addRulesForPackage($package);
+                            if (!isset($this->installedMap[$package->id])) {
+                                $this->addRulesForPackage($package, $ignorePlatformReqs);
                             }
                         }
 
@@ -353,7 +334,7 @@ class RuleSetGenerator
         $this->workTracker->complete();
     }
 
-    public function getRulesFor($jobs, $installedMap)
+    public function getRulesFor($jobs, $installedMap, $ignorePlatformReqs = false)
     {
         $this->jobs = $jobs;
         $this->rules = new RuleSet;
@@ -367,7 +348,6 @@ class RuleSetGenerator
         $this->whitelistedMap = array();
         foreach ($this->installedMap as $package) {
             $this->whitelistFromPackage($package);
-            $this->whitelistFromUpdatePackages($package);
             $this->workTracker->ping();
         }
 
@@ -378,13 +358,12 @@ class RuleSetGenerator
         $this->addedMap = array();
         foreach ($this->installedMap as $package) {
             $this->workTracker->ping();
-            $this->addRulesForPackage($package);
-            $this->addRulesForUpdatePackages($package);
+            $this->addRulesForPackage($package, $ignorePlatformReqs);
         }
 
         $this->workTracker->complete();
 
-        $this->addRulesForJobs();
+        $this->addRulesForJobs($ignorePlatformReqs);
 
         return $this->rules;
     }

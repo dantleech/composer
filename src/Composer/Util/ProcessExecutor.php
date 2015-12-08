@@ -13,6 +13,7 @@
 namespace Composer\Util;
 
 use Symfony\Component\Process\Process;
+use Symfony\Component\Process\ProcessUtils;
 use Composer\IO\IOInterface;
 
 /**
@@ -44,7 +45,7 @@ class ProcessExecutor
     {
         if ($this->io && $this->io->isDebug()) {
             $safeCommand = preg_replace('{(://[^:/\s]+:)[^@\s/]+}i', '$1****', $command);
-            $this->io->write('Executing command ('.($cwd ?: 'CWD').'): '.$safeCommand);
+            $this->io->writeError('Executing command ('.($cwd ?: 'CWD').'): '.$safeCommand);
         }
 
         // make sure that null translate to the proper directory in case the dir is a symlink
@@ -103,5 +104,17 @@ class ProcessExecutor
     public static function setTimeout($timeout)
     {
         static::$timeout = $timeout;
+    }
+
+    /**
+     * Escapes a string to be used as a shell argument.
+     *
+     * @param string $argument The argument that will be escaped
+     *
+     * @return string The escaped argument
+     */
+    public static function escape($argument)
+    {
+        return ProcessUtils::escapeArgument($argument);
     }
 }

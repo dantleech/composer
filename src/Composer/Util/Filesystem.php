@@ -88,15 +88,14 @@ class Filesystem
      * Uses the process component if proc_open is enabled on the PHP
      * installation.
      *
-     * @param  string $directory
-     * @return bool
-     *
+     * @param  string            $directory
      * @throws \RuntimeException
+     * @return bool
      */
     public function removeDirectory($directory)
     {
-        if (file_exists($directory) && is_link($directory)) {
-            return $this->unlink($directory);
+        if ($this->isSymlinkedDirectory($directory)) {
+            return $this->unlinkSymlinkedDirectory($directory);
         }
 
         if (!file_exists($directory) || !is_dir($directory)) {
@@ -112,9 +111,9 @@ class Filesystem
         }
 
         if (defined('PHP_WINDOWS_VERSION_BUILD')) {
-            $cmd = sprintf('rmdir /S /Q %s', escapeshellarg(realpath($directory)));
+            $cmd = sprintf('rmdir /S /Q %s', ProcessExecutor::escape(realpath($directory)));
         } else {
-            $cmd = sprintf('rm -rf %s', escapeshellarg($directory));
+            $cmd = sprintf('rm -rf %s', ProcessExecutor::escape($directory));
         }
 
         $result = $this->getProcess()->execute($cmd, $output) === 0;
@@ -174,16 +173,15 @@ class Filesystem
     /**
      * Attempts to unlink a file and in case of failure retries after 350ms on windows
      *
-     * @param  string $path
-     * @return bool
-     *
+     * @param  string            $path
      * @throws \RuntimeException
+     * @return bool
      */
     public function unlink($path)
     {
-        if (!@unlink($path)) {
+        if (!@$this->unlinkImplementation($path)) {
             // retry after a bit on windows since it tends to be touchy with mass removals
-            if (!defined('PHP_WINDOWS_VERSION_BUILD') || (usleep(350000) && !@unlink($path))) {
+            if (!defined('PHP_WINDOWS_VERSION_BUILD') || (usleep(350000) && !@$this->unlinkImplementation($path))) {
                 $error = error_get_last();
                 $message = 'Could not delete '.$path.': ' . @$error['message'];
                 if (defined('PHP_WINDOWS_VERSION_BUILD')) {
@@ -200,10 +198,9 @@ class Filesystem
     /**
      * Attempts to rmdir a file and in case of failure retries after 350ms on windows
      *
-     * @param  string $path
-     * @return bool
-     *
+     * @param  string            $path
      * @throws \RuntimeException
+     * @return bool
      */
     public function rmdir($path)
     {
@@ -234,6 +231,13 @@ class Filesystem
      */
     public function copyThenRemove($source, $target)
     {
+        if (!is_dir($source)) {
+            copy($source, $target);
+            $this->unlink($source);
+
+            return;
+        }
+
         $it = new RecursiveDirectoryIterator($source, RecursiveDirectoryIterator::SKIP_DOTS);
         $ri = new RecursiveIteratorIterator($it, RecursiveIteratorIterator::SELF_FIRST);
         $this->ensureDirectoryExists($target);
@@ -262,7 +266,7 @@ class Filesystem
 
         if (defined('PHP_WINDOWS_VERSION_BUILD')) {
             // Try to copy & delete - this is a workaround for random "Access denied" errors.
-            $command = sprintf('xcopy %s %s /E /I /Q', escapeshellarg($source), escapeshellarg($target));
+            $command = sprintf('xcopy %s %s /E /I /Q /Y', ProcessExecutor::escape($source), ProcessExecutor::escape($target));
             $result = $this->processExecutor->execute($command, $output);
 
             // clear stat cache because external processes aren't tracked by the php stat cache
@@ -276,7 +280,7 @@ class Filesystem
         } else {
             // We do not use PHP's "rename" function here since it does not support
             // the case where $source, and $target are located on different partitions.
-            $command = sprintf('mv %s %s', escapeshellarg($source), escapeshellarg($target));
+            $command = sprintf('mv %s %s', ProcessExecutor::escape($source), ProcessExecutor::escape($target));
             $result = $this->processExecutor->execute($command, $output);
 
             // clear stat cache because external processes aren't tracked by the php stat cache
@@ -309,7 +313,7 @@ class Filesystem
         $to = lcfirst($this->normalizePath($to));
 
         if ($directories) {
-            $from .= '/dummy_file';
+            $from = rtrim($from, '/') . '/dummy_file';
         }
 
         if (dirname($from) === dirname($to)) {
@@ -454,6 +458,15 @@ class Filesystem
         return (bool) preg_match('{^(file://|/|[a-z]:[\\\\/]|\.\.[\\\\/]|[a-z0-9_.-]+[\\\\/])}i', $path);
     }
 
+    public static function getPlatformPath($path)
+    {
+        if (defined('PHP_WINDOWS_VERSION_BUILD')) {
+            $path = preg_replace('{^(?:file:///([a-z])/)}i', 'file://$1:/', $path);
+        }
+
+        return preg_replace('{^file://}i', '', $path);
+    }
+
     protected function directorySize($directory)
     {
         $it = new RecursiveDirectoryIterator($directory, RecursiveDirectoryIterator::SKIP_DOTS);
@@ -472,5 +485,95 @@ class Filesystem
     protected function getProcess()
     {
         return new ProcessExecutor;
+    }
+
+    /**
+     * delete symbolic link implementation (commonly known as "unlink()")
+     *
+     * symbolic links on windows which link to directories need rmdir instead of unlink
+     *
+     * @param string $path
+     *
+     * @return bool
+     */
+    private function unlinkImplementation($path)
+    {
+        if (defined('PHP_WINDOWS_VERSION_BUILD') && is_dir($path) && is_link($path)) {
+            return rmdir($path);
+        }
+
+        return unlink($path);
+    }
+
+    /**
+     * Creates a relative symlink from $link to $target
+     *
+     * @param  string $target The path of the binary file to be symlinked
+     * @param  string $link   The path where the symlink should be created
+     * @return bool
+     */
+    public function relativeSymlink($target, $link)
+    {
+        $cwd = getcwd();
+
+        $relativePath = $this->findShortestPath($link, $target);
+        chdir(dirname($link));
+        $result = @symlink($relativePath, $link);
+
+        chdir($cwd);
+
+        return (bool) $result;
+    }
+
+    /**
+     * return true if that directory is a symlink.
+     *
+     * @param string $directory
+     *
+     * @return bool
+     */
+    public function isSymlinkedDirectory($directory)
+    {
+        if (!is_dir($directory)) {
+            return false;
+        }
+
+        $resolved = $this->resolveSymlinkedDirectorySymlink($directory);
+
+        return is_link($resolved);
+    }
+
+    /**
+     * @param string $directory
+     *
+     * @return bool
+     */
+    private function unlinkSymlinkedDirectory($directory)
+    {
+        $resolved = $this->resolveSymlinkedDirectorySymlink($directory);
+
+        return $this->unlink($resolved);
+    }
+
+    /**
+     * resolve pathname to symbolic link of a directory
+     *
+     * @param string $pathname directory path to resolve
+     *
+     * @return string resolved path to symbolic link or original pathname (unresolved)
+     */
+    private function resolveSymlinkedDirectorySymlink($pathname)
+    {
+        if (!is_dir($pathname)) {
+            return $pathname;
+        }
+
+        $resolved = rtrim($pathname, '/');
+
+        if (!strlen($resolved)) {
+            return $pathname;
+        }
+
+        return $resolved;
     }
 }

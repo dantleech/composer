@@ -14,9 +14,10 @@ namespace Composer\Package\Loader;
 
 use Composer\Package;
 use Composer\Package\AliasPackage;
+use Composer\Package\Link;
 use Composer\Package\RootAliasPackage;
 use Composer\Package\RootPackageInterface;
-use Composer\Package\Version\VersionParser;
+use Composer\Semver\VersionParser;
 
 /**
  * @author Konstantin Kudryashiv <ever.zet@gmail.com>
@@ -67,7 +68,7 @@ class ArrayLoader implements LoaderInterface
                 throw new \UnexpectedValueException('Package '.$config['name'].'\'s bin key should be an array, '.gettype($config['bin']).' given.');
             }
             foreach ($config['bin'] as $key => $bin) {
-                $config['bin'][$key]= ltrim($bin, '/');
+                $config['bin'][$key] = ltrim($bin, '/');
             }
             $package->setBinaries($config['bin']);
         }
@@ -115,7 +116,7 @@ class ArrayLoader implements LoaderInterface
             if (isset($config[$type])) {
                 $method = 'set'.ucfirst($opts['method']);
                 $package->{$method}(
-                    $this->versionParser->parseLinks(
+                    $this->parseLinks(
                         $package->getName(),
                         $package->getPrettyVersion(),
                         $opts['description'],
@@ -147,7 +148,7 @@ class ArrayLoader implements LoaderInterface
         }
 
         if (!empty($config['time'])) {
-            $time = ctype_digit($config['time']) ? '@'.$config['time'] : $config['time'];
+            $time = preg_match('/^\d++$/D', $config['time']) ? '@'.$config['time'] : $config['time'];
 
             try {
                 $date = new \DateTime($time, new \DateTimeZone('UTC'));
@@ -195,6 +196,10 @@ class ArrayLoader implements LoaderInterface
             if (isset($config['support'])) {
                 $package->setSupport($config['support']);
             }
+
+            if (isset($config['abandoned'])) {
+                $package->setAbandoned($config['abandoned']);
+            }
         }
 
         if ($aliasNormalized = $this->getBranchAlias($config)) {
@@ -213,6 +218,29 @@ class ArrayLoader implements LoaderInterface
     }
 
     /**
+     * @param  string $source        source package name
+     * @param  string $sourceVersion source package version (pretty version ideally)
+     * @param  string $description   link description (e.g. requires, replaces, ..)
+     * @param  array  $links         array of package name => constraint mappings
+     * @return Link[]
+     */
+    public function parseLinks($source, $sourceVersion, $description, $links)
+    {
+        $res = array();
+        foreach ($links as $target => $constraint) {
+            if ('self.version' === $constraint) {
+                $parsedConstraint = $this->versionParser->parseConstraints($sourceVersion);
+            } else {
+                $parsedConstraint = $this->versionParser->parseConstraints($constraint);
+            }
+
+            $res[strtolower($target)] = new Link($source, $target, $parsedConstraint, $description, $constraint);
+        }
+
+        return $res;
+    }
+
+    /**
      * Retrieves a branch alias (dev-master => 1.0.x-dev for example) if it exists
      *
      * @param  array       $config the entire package config
@@ -220,7 +248,7 @@ class ArrayLoader implements LoaderInterface
      */
     public function getBranchAlias(array $config)
     {
-        if ('dev-' !== substr($config['version'], 0, 4)
+        if (('dev-' !== substr($config['version'], 0, 4) && '-dev' !== substr($config['version'], -4))
             || !isset($config['extra']['branch-alias'])
             || !is_array($config['extra']['branch-alias'])
         ) {
@@ -241,6 +269,14 @@ class ArrayLoader implements LoaderInterface
 
             // ensure that it is the current branch aliasing itself
             if (strtolower($config['version']) !== strtolower($sourceBranch)) {
+                continue;
+            }
+
+            // If using numeric aliases ensure the alias is a valid subversion
+            if (($sourcePrefix = $this->versionParser->parseNumericAliasPrefix($sourceBranch))
+                && ($targetPrefix = $this->versionParser->parseNumericAliasPrefix($targetBranch))
+                && (stripos($targetPrefix, $sourcePrefix) !== 0)
+            ) {
                 continue;
             }
 

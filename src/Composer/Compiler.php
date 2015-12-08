@@ -12,8 +12,11 @@
 
 namespace Composer;
 
+use Composer\Json\JsonFile;
+use Composer\Spdx\SpdxLicenses;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\Process\Process;
+use Seld\PharUtils\Timestamps;
 
 /**
  * The Compiler class compiles composer into a phar
@@ -24,13 +27,14 @@ use Symfony\Component\Process\Process;
 class Compiler
 {
     private $version;
+    private $branchAliasVersion = '';
     private $versionDate;
 
     /**
      * Compiles composer into a single phar file
      *
-     * @throws \RuntimeException
      * @param  string            $pharFile The full path to the file to create
+     * @throws \RuntimeException
      */
     public function compile($pharFile = 'composer.phar')
     {
@@ -48,19 +52,31 @@ class Compiler
         if ($process->run() != 0) {
             throw new \RuntimeException('Can\'t run git log. You must ensure to run compile from composer git repository clone and that git binary is available.');
         }
-        $date = new \DateTime(trim($process->getOutput()));
-        $date->setTimezone(new \DateTimeZone('UTC'));
-        $this->versionDate = $date->format('Y-m-d H:i:s');
 
-        $process = new Process('git describe --tags HEAD');
+        $this->versionDate = new \DateTime(trim($process->getOutput()));
+        $this->versionDate->setTimezone(new \DateTimeZone('UTC'));
+
+        $process = new Process('git describe --tags --exact-match HEAD');
         if ($process->run() == 0) {
             $this->version = trim($process->getOutput());
+        } else {
+            // get branch-alias defined in composer.json for dev-master (if any)
+            $localConfig = __DIR__.'/../../composer.json';
+            $file = new JsonFile($localConfig);
+            $localConfig = $file->read();
+            if (isset($localConfig['extra']['branch-alias']['dev-master'])) {
+                $this->branchAliasVersion = $localConfig['extra']['branch-alias']['dev-master'];
+            }
         }
 
         $phar = new \Phar($pharFile, 0, 'composer.phar');
         $phar->setSignatureAlgorithm(\Phar::SHA1);
 
         $phar->startBuffering();
+
+        $finderSort = function ($a, $b) {
+            return strcmp(strtr($a->getRealPath(), '\\', '/'), strtr($b->getRealPath(), '\\', '/'));
+        };
 
         $finder = new Finder();
         $finder->files()
@@ -69,6 +85,7 @@ class Compiler
             ->notName('Compiler.php')
             ->notName('ClassLoader.php')
             ->in(__DIR__.'/..')
+            ->sort($finderSort)
         ;
 
         foreach ($finder as $file) {
@@ -79,22 +96,31 @@ class Compiler
         $finder = new Finder();
         $finder->files()
             ->name('*.json')
-            ->in(__DIR__ . '/../../res')
+            ->in(__DIR__.'/../../res')
+            ->in(SpdxLicenses::getResourcesDir())
+            ->sort($finderSort)
         ;
 
         foreach ($finder as $file) {
             $this->addFile($phar, $file, false);
         }
-        $this->addFile($phar, new \SplFileInfo(__DIR__ . '/../../src/Composer/IO/hiddeninput.exe'), false);
+        $this->addFile($phar, new \SplFileInfo(__DIR__ . '/../../vendor/seld/cli-prompt/res/hiddeninput.exe'), false);
 
         $finder = new Finder();
         $finder->files()
             ->ignoreVCS(true)
             ->name('*.php')
+            ->name('LICENSE')
             ->exclude('Tests')
+            ->exclude('tests')
+            ->exclude('docs')
             ->in(__DIR__.'/../../vendor/symfony/')
-            ->in(__DIR__.'/../../vendor/seld/jsonlint/src/')
-            ->in(__DIR__.'/../../vendor/justinrainbow/json-schema/src/')
+            ->in(__DIR__.'/../../vendor/seld/jsonlint/')
+            ->in(__DIR__.'/../../vendor/seld/cli-prompt/')
+            ->in(__DIR__.'/../../vendor/justinrainbow/json-schema/')
+            ->in(__DIR__.'/../../vendor/composer/spdx-licenses/')
+            ->in(__DIR__.'/../../vendor/composer/semver/')
+            ->sort($finderSort)
         ;
 
         foreach ($finder as $file) {
@@ -123,6 +149,11 @@ class Compiler
         $this->addFile($phar, new \SplFileInfo(__DIR__.'/../../LICENSE'), false);
 
         unset($phar);
+
+        // re-sign the phar with reproducible timestamp / signature
+        $util = new Timestamps($pharFile);
+        $util->updateTimestamps($this->versionDate);
+        $util->save($pharFile, \Phar::SHA1);
     }
 
     private function addFile($phar, $file, $strip = true)
@@ -138,7 +169,8 @@ class Compiler
 
         if ($path === 'src/Composer/Composer.php') {
             $content = str_replace('@package_version@', $this->version, $content);
-            $content = str_replace('@release_date@', $this->versionDate, $content);
+            $content = str_replace('@package_branch_alias_version@', $this->branchAliasVersion, $content);
+            $content = str_replace('@release_date@', $this->versionDate->format('Y-m-d H:i:s'), $content);
         }
 
         $phar->addFromString($path, $content);
@@ -200,13 +232,23 @@ class Compiler
  * the license that is located at the bottom of this file.
  */
 
+// Avoid APC causing random fatal errors per https://github.com/composer/composer/issues/264
+if (extension_loaded('apc') && ini_get('apc.enable_cli') && ini_get('apc.cache_by_default')) {
+    if (version_compare(phpversion('apc'), '3.0.12', '>=')) {
+        ini_set('apc.cache_by_default', 0);
+    } else {
+        fwrite(STDERR, 'Warning: APC <= 3.0.12 may cause fatal errors when running composer commands.'.PHP_EOL);
+        fwrite(STDERR, 'Update APC, or set apc.enable_cli or apc.cache_by_default to 0 in your php.ini.'.PHP_EOL);
+    }
+}
+
 Phar::mapPhar('composer.phar');
 
 EOF;
 
-        // add warning once the phar is older than 30 days
+        // add warning once the phar is older than 60 days
         if (preg_match('{^[a-f0-9]+$}', $this->version)) {
-            $warningTime = time() + 30*86400;
+            $warningTime = $this->versionDate->format('U') + 60 * 86400;
             $stub .= "define('COMPOSER_DEV_WARNING_TIME', $warningTime);\n";
         }
 

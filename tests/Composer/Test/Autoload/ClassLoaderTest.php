@@ -1,5 +1,15 @@
 <?php
 
+/*
+ * This file is part of Composer.
+ *
+ * (c) Nils Adermann <naderman@naderman.de>
+ *     Jordi Boggiano <j.boggiano@seld.be>
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
 namespace Composer\Test\Autoload;
 
 use Composer\Autoload\ClassLoader;
@@ -18,7 +28,7 @@ class ClassLoaderTest extends \PHPUnit_Framework_TestCase
      * @param bool   $prependSeparator Whether to call ->loadClass() with a class name with preceding
      *                                 namespace separator, as it happens in PHP 5.3.0 - 5.3.2. See https://bugs.php.net/50731
      */
-    public function testLoadClass($class, $prependSeparator = FALSE)
+    public function testLoadClass($class, $prependSeparator = false)
     {
         $loader = new ClassLoader();
         $loader->add('Namespaced\\', __DIR__ . '/Fixtures');
@@ -54,5 +64,14 @@ class ClassLoaderTest extends \PHPUnit_Framework_TestCase
             array('Pearlike_Bar', true),
             array('ShinyVendor\\ShinyPackage\\SubNamespace\\Bar', true),
         );
+    }
+
+    /**
+     * getPrefixes method should return empty array if ClassLoader does not have any psr-0 configuration
+     */
+    public function testGetPrefixesWithNoPSR0Configuration()
+    {
+        $loader = new ClassLoader();
+        $this->assertEmpty($loader->getPrefixes());
     }
 }

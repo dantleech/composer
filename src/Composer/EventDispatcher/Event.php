@@ -25,25 +25,32 @@ class Event
     protected $name;
 
     /**
-     * @var array Arguments passed by the user
+     * @var array Arguments passed by the user, these will be forwarded to CLI script handlers
      */
     protected $args;
 
     /**
-     * @var boolean Whether the event should not be passed to more listeners
+     * @var array Flags usable in PHP script handlers
+     */
+    protected $flags;
+
+    /**
+     * @var bool Whether the event should not be passed to more listeners
      */
     private $propagationStopped = false;
 
     /**
      * Constructor.
      *
-     * @param string $name   The event name
-     * @param array  $events Arguments passed by the user
+     * @param string $name  The event name
+     * @param array  $args  Arguments passed by the user
+     * @param array  $flags Optional flags to pass data not as argument
      */
-    public function __construct($name, array $args = array())
+    public function __construct($name, array $args = array(), array $flags = array())
     {
         $this->name = $name;
         $this->args = $args;
+        $this->flags = $flags;
     }
 
     /**
@@ -67,9 +74,19 @@ class Event
     }
 
     /**
+     * Returns the event's flags.
+     *
+     * @return array The event flags
+     */
+    public function getFlags()
+    {
+        return $this->flags;
+    }
+
+    /**
      * Checks if stopPropagation has been called
      *
-     * @return boolean Whether propagation has been stopped
+     * @return bool Whether propagation has been stopped
      */
     public function isPropagationStopped()
     {

@@ -22,15 +22,21 @@ class RuleSet implements \IteratorAggregate, \Countable
     const TYPE_JOB = 1;
     const TYPE_LEARNED = 4;
 
+    /**
+     * READ-ONLY: Lookup table for rule id to rule object
+     *
+     * @var Rule[]
+     */
+    public $ruleById;
+
     protected static $types = array(
-        -1 => 'UNKNOWN',
+        255 => 'UNKNOWN',
         self::TYPE_PACKAGE => 'PACKAGE',
         self::TYPE_JOB => 'JOB',
         self::TYPE_LEARNED => 'LEARNED',
     );
 
     protected $rules;
-    protected $ruleById;
     protected $nextRuleId;
 
     protected $rulesByHash;
@@ -60,7 +66,6 @@ class RuleSet implements \IteratorAggregate, \Countable
         $this->ruleById[$this->nextRuleId] = $rule;
         $rule->setType($type);
 
-        $rule->setId($this->nextRuleId);
         $this->nextRuleId++;
 
         $hash = $rule->getHash();
@@ -125,7 +130,7 @@ class RuleSet implements \IteratorAggregate, \Countable
     public function getTypes()
     {
         $types = self::$types;
-        unset($types[-1]);
+        unset($types[255]);
 
         return array_keys($types);
     }
@@ -144,17 +149,22 @@ class RuleSet implements \IteratorAggregate, \Countable
         return false;
     }
 
-    public function __toString()
+    public function getPrettyString(Pool $pool = null)
     {
         $string = "\n";
         foreach ($this->rules as $type => $rules) {
             $string .= str_pad(self::$types[$type], 8, ' ') . ": ";
             foreach ($rules as $rule) {
-                $string .= $rule."\n";
+                $string .= ($pool ? $rule->getPrettyString($pool) : $rule)."\n";
             }
             $string .= "\n\n";
         }
 
         return $string;
+    }
+
+    public function __toString()
+    {
+        return $this->getPrettyString(null);
     }
 }

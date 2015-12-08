@@ -13,7 +13,6 @@
 namespace Composer\Installer;
 
 use Composer\Composer;
-use Composer\Package\Package;
 use Composer\IO\IOInterface;
 use Composer\Repository\InstalledRepositoryInterface;
 use Composer\Package\PackageInterface;
@@ -27,7 +26,6 @@ use Composer\Package\PackageInterface;
 class PluginInstaller extends LibraryInstaller
 {
     private $installationManager;
-    private static $classCounter = 0;
 
     /**
      * Initializes Plugin installer.
@@ -40,7 +38,6 @@ class PluginInstaller extends LibraryInstaller
     {
         parent::__construct($io, $composer, 'composer-plugin');
         $this->installationManager = $composer->getInstallationManager();
-
     }
 
     /**
@@ -62,7 +59,7 @@ class PluginInstaller extends LibraryInstaller
         }
 
         parent::install($repo, $package);
-        $this->composer->getPluginManager()->registerPackage($package);
+        $this->composer->getPluginManager()->registerPackage($package, true);
     }
 
     /**
@@ -76,6 +73,6 @@ class PluginInstaller extends LibraryInstaller
         }
 
         parent::update($repo, $initial, $target);
-        $this->composer->getPluginManager()->registerPackage($target);
+        $this->composer->getPluginManager()->registerPackage($target, true);
     }
 }
