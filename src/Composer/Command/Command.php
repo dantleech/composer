@@ -16,7 +16,12 @@ use Composer\Composer;
 use Composer\Console\Application;
 use Composer\IO\IOInterface;
 use Composer\IO\NullIO;
+use Composer\IO\WorkTracker\Formatter\DebugFormatter;
+use Composer\IO\WorkTracker\Formatter\MultiProgressFormatter;
+use Composer\IO\WorkTracker\Formatter\HeadingFormatter;
+use InvalidArgumentException;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\Output;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Command\Command as BaseCommand;
 
@@ -115,5 +120,28 @@ abstract class Command extends BaseCommand
         }
 
         parent::initialize($input, $output);
+    }
+
+    /**
+     * Returns a work tracker formatter based upon the `--pretty` option.
+     *
+     * @param \Symfony\Component\Console\Input\InputInterface   $input
+     * @param \Symfony\Component\Console\Output\OutputInterface $output
+     * @return \Composer\IO\WorkTracker\FormatterInterface
+     * @internal param \Composer\IO\IOInterface $io
+     */
+    public function getWorkTrackerFormatter(InputInterface $input, OutputInterface $output)
+    {
+        $pretty = $input->getOption('pretty');
+        if ($pretty == 'debug') {
+            return new DebugFormatter($output);
+        } else if($pretty == 'multi') {
+            return new MultiProgressFormatter($output);
+        } else if($pretty == 'headings') {
+            return new HeadingFormatter($output, true);
+        } else {
+            throw new InvalidArgumentException('Invalid value for --pretty: ' . $pretty);
+        }
+
     }
 }

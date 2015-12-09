@@ -17,17 +17,17 @@ class DebugFormatter implements FormatterInterface
 
     public function create(AbstractWorkTracker $workTracker)
     {
-        $this->formatMessage($workTracker, 'BEGIN', $workTracker->getTitle());
+        $this->formatMessage($workTracker, 'BEGIN ', $workTracker->getTitle());
     }
 
     public function complete(AbstractWorkTracker $workTracker)
     {
-        $this->formatMessage($workTracker, 'DONE', $workTracker->getTitle());
+        $this->formatMessage($workTracker, 'DONE  ', $workTracker->getTitle());
     }
 
     public function ping(AbstractWorkTracker $workTracker)
     {
-        $this->formatMessage($workTracker, 'PING', sprintf(
+        $this->formatMessage($workTracker, 'PING  ', sprintf(
             '[#%1$06d] [%ss] %s',
             $workTracker->getPingCount(),
             $workTracker->getElapsedPingTime(),

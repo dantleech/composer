@@ -14,6 +14,9 @@ namespace Composer\Test;
 
 use Composer\Installer;
 use Composer\Console\Application;
+use Composer\IO\WorkTracker\Formatter\EmptyFormatter;
+use Composer\IO\WorkTracker\Formatter\HeadingFormatter;
+use Composer\IO\WorkTracker\UnboundWorkTracker;
 use Composer\Json\JsonFile;
 use Composer\Repository\ArrayRepository;
 use Composer\Repository\RepositoryManager;
@@ -69,7 +72,7 @@ class InstallerTest extends TestCase
         $eventDispatcher = $this->getMockBuilder('Composer\EventDispatcher\EventDispatcher')->disableOriginalConstructor()->getMock();
         $autoloadGenerator = $this->getMockBuilder('Composer\Autoload\AutoloadGenerator')->disableOriginalConstructor()->getMock();
 
-        $installer = new Installer($io, $config, clone $rootPackage, $downloadManager, $repositoryManager, $locker, $installationManager, $eventDispatcher, $autoloadGenerator, createWorkTrackerForTesting());
+        $installer = new Installer($io, $config, clone $rootPackage, $downloadManager, $repositoryManager, $locker, $installationManager, $eventDispatcher, $autoloadGenerator, createWorkTrackerForTesting(new EmptyFormatter()));
         $result = $installer->run();
         $this->assertSame(0, $result);
 
@@ -199,7 +202,12 @@ class InstallerTest extends TestCase
         $composer->setAutoloadGenerator($autoloadGenerator);
         $composer->setEventDispatcher($eventDispatcher);
 
-        $installer = Installer::create($io, $composer, createWorkTrackerForTesting());
+        $symfonyOutput = $this->getMock('Symfony\Component\Console\Output\OutputInterface');
+        $symfonyOutput->expects($this->any())
+           ->method('write')
+           ->will($this->returnCallback($callback));
+
+        $installer = Installer::create($io, $composer, createWorkTrackerForTesting(new HeadingFormatter($symfonyOutput, true)));
 
         $application = new Application;
         $application->get('install')->setCode(function ($input, $output) use ($installer) {

@@ -1,0 +1,1 @@
+/Users/chris/Web/Oxygen/Components/composer/tests/Composer/Test/InstallerTest.php

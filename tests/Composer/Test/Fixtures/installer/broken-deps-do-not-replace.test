@@ -22,6 +22,7 @@ Broken dependencies should not lead to a replacer being installed which is not m
 install
 --EXPECT-OUTPUT--
 <info>Loading composer repositories with package information</info>
+<info>Installing dependencies (including require-dev)</info>
 <error>Your requirements could not be resolved to an installable set of packages.</error>
 
   Problem 1

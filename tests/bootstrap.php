@@ -25,8 +25,8 @@ if (function_exists('date_default_timezone_set') && function_exists('date_defaul
  *
  * @return \Composer\IO\WorkTracker\ContextWorkTracker
  */
-function createWorkTrackerForTesting() {
-    $masterWorkTracker = new UnboundWorkTracker('Composer Install', new EmptyFormatter());
+function createWorkTrackerForTesting($formatter) {
+    $masterWorkTracker = new UnboundWorkTracker('Composer Install', $formatter);
     return new ContextWorkTracker($masterWorkTracker);
 }
 
