@@ -51,7 +51,7 @@ class XzDownloaderTest extends \PHPUnit_Framework_TestCase
             $downloader->download($packageMock, sys_get_temp_dir().'/composer-xz-test');
             $this->fail('Download of invalid tarball should throw an exception');
         } catch (\RuntimeException $e) {
-            $this->assertContains('File format not recognized', $e->getMessage());
+            $this->assertFalse(strpos($e->getMessage(), 'File format not recognized') === false && strpos($e->getMessage(), 'Unrecognized archive format') === false, 'Error message contains `File format not recognized` or `Unrecognized archive format`');
         }
     }
 }

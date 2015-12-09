@@ -38,7 +38,7 @@ class SolverTest extends TestCase
 
         $this->request = new Request($this->pool);
         $this->policy = new DefaultPolicy;
-        $this->solver = new Solver($this->policy, $this->pool, $this->repoInstalled);
+        $this->solver = new Solver($this->policy, $this->pool, $this->repoInstalled, createWorkTrackerForTesting());
     }
 
     public function testSolverInstallSingle()

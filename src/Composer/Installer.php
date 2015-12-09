@@ -475,8 +475,6 @@ class Installer
         }
 
         if ($this->update) {
-            $this->workTracker->createBound('Updating dependencies'.($withDevReqs?' (including require-dev)':''), count($links));
-
             $request->updateAll();
 
             if ($withDevReqs) {
@@ -485,9 +483,11 @@ class Installer
                 $links = $this->package->getRequires();
             }
 
+            $this->workTracker->createBound('Updating dependencies'.($withDevReqs?' (including require-dev)':''), count($links));
+
             foreach ($links as $link) {
                 $request->install($link->getTarget(), $link->getConstraint());
-                $this->ping();
+                $this->workTracker->ping();
             }
 
             $this->workTracker->complete();
