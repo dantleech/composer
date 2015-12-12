@@ -247,6 +247,7 @@ class Installer
             $this->suggestedPackages = array();
             $res = $this->doInstall($localRepo, $installedRepo, $platformRepo, $aliases, $this->devMode);
             if ($res !== 0) {
+                $workTracker->complete();
                 return $res;
             }
         } catch (\Exception $e) {

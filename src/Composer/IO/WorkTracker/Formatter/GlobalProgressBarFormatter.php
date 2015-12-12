@@ -68,7 +68,7 @@ class GlobalProgressBarFormatter extends ProgressBarFormatter
             $this->previousFullProgress += $this->getWeightForTitle($workTracker->getTitle());
             $this->setProgress($this->previousFullProgress);
         } else if($workTracker->getDepth() == 2) {
-            $this->progressBar->setMessage(static::$noMessage);
+            //$this->progressBar->setMessage(static::$noMessage);
         } else {
             $this->progressBar->setMessage($workTracker->getParent()->getTitle());
         }
