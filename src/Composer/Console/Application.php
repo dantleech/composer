@@ -12,6 +12,8 @@
 
 namespace Composer\Console;
 
+use Composer\IO\WorkTracker\Formatter\EmptyFormatter;
+use Composer\IO\WorkTracker\UnboundWorkTracker;
 use Symfony\Component\Console\Application as BaseApplication;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -103,7 +105,7 @@ class Application extends BaseApplication
      */
     public function doRun(InputInterface $input, OutputInterface $output)
     {
-        $this->io = new ConsoleIO($input, $output, $this->getHelperSet());
+        $this->io = new ConsoleIO($input, $output, $this->getHelperSet(), new UnboundWorkTracker('Composer', new EmptyFormatter($output)));
         ErrorHandler::register($this->io);
         $io = $this->getIO();
 

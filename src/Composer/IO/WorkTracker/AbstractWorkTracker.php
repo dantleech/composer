@@ -137,4 +137,11 @@ abstract class AbstractWorkTracker implements WorkTrackerInterface
 
         return $depth;
     }
+
+    /**
+     * @return \Composer\IO\WorkTracker\FormatterInterface
+     */
+    public function getFormatter() {
+        return $this->formatter;
+    }
 }

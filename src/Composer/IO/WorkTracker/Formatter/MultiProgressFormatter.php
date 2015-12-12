@@ -20,7 +20,8 @@ class MultiProgressFormatter implements FormatterInterface
     protected $progress = array();
     protected $lastMessagesLength = array();
     protected $lastMessageCount = 0;
-    protected $depth = 3;
+    protected $depth = 5;
+    protected $lastOutputTime;
 
     /**
      * @param OutputInterface $output
@@ -28,6 +29,7 @@ class MultiProgressFormatter implements FormatterInterface
     public function __construct(OutputInterface $output)
     {
         $this->output = $output;
+        $this->lastOutputTime = microtime(true);
     }
 
     /**
@@ -49,21 +51,39 @@ class MultiProgressFormatter implements FormatterInterface
      */
     public function ping(AbstractWorkTracker $workTracker)
     {
+        if(!$this->shouldDisplayAgain()) {
+            return;
+        }
         $out = array();
+        $progress = 0;
         while ($parent = $workTracker->getParent()) {
 
             if ($workTracker instanceof \Composer\IO\WorkTracker\BoundWorkTracker) {
+                $progress /= $workTracker->getMax();
+                $progress += $workTracker->getPingCount() / $workTracker->getMax();
                 $out[] = sprintf('[%d/%d] %s', $workTracker->getPingCount(), $workTracker->getMax(), $workTracker->getTitle());
             } else {
+                $progress = 0;
                 $out[] = sprintf('[%d/-] %s', $workTracker->getPingCount(), $workTracker->getTitle());
             }
 
             $workTracker = $parent;
         }
 
+        $out[] = round($progress * 100) . '% done';
         $out = array_reverse($out);
 
         $this->overwrite($out);
+    }
+
+    private function shouldDisplayAgain() {
+        $currentTime = microtime(true);
+        if($this->lastOutputTime + 0.1 < $currentTime) {
+            $this->lastOutputTime = $currentTime;
+            return true;
+        } else {
+            return false;
+        }
     }
 
     /**

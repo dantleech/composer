@@ -22,7 +22,10 @@ class ArchiveDownloaderTest extends \PHPUnit_Framework_TestCase
             ->will($this->returnValue('http://example.com/script.js'))
         ;
 
-        $downloader = $this->getMockForAbstractClass('Composer\Downloader\ArchiveDownloader', array($this->getMock('Composer\IO\IOInterface'), $this->getMock('Composer\Config')));
+        $io = $this->getMock('Composer\IO\IOInterface');
+        $io->expects($this->any())->method('getWorkTracker')->willReturn($this->getMock('Composer\IO\WorkTracker\WorkTrackerInterface'));
+
+        $downloader = $this->getMockForAbstractClass('Composer\Downloader\ArchiveDownloader', array($io, $this->getMock('Composer\Config')));
         $method = new \ReflectionMethod($downloader, 'getFileName');
         $method->setAccessible(true);
 

@@ -13,6 +13,8 @@
 namespace Composer\IO;
 
 use Composer\Config;
+use Composer\IO\WorkTracker\ContextWorkTracker;
+use Composer\IO\WorkTracker\WorkTrackerInterface;
 
 /**
  * The Input/Output helper interface.
@@ -179,4 +181,18 @@ interface IOInterface
      * @param Config $config
      */
     public function loadConfiguration(Config $config);
+
+    /**
+     * Returns a context work tracker for the program.
+     *
+     * @return ContextWorkTracker
+     */
+    public function getWorkTracker();
+
+    /**
+     * Sets the work tracker implementation
+     *
+     * @param \Composer\IO\WorkTracker\WorkTrackerInterface $workTracker
+     */
+    public function setWorkTracker(WorkTrackerInterface $workTracker);
 }

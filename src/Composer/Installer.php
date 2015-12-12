@@ -135,11 +135,6 @@ class Installer
     protected $additionalInstalledRepository;
 
     /**
-     * @var WorkTracker
-     */
-    protected $workTracker;
-
-    /**
      * Constructor
      *
      * @param IOInterface          $io
@@ -152,10 +147,9 @@ class Installer
      * @param EventDispatcher      $eventDispatcher
      * @param AutoloadGenerator    $autoloadGenerator
      */
-    public function __construct(IOInterface $io, Config $config, RootPackageInterface $package, DownloadManager $downloadManager, RepositoryManager $repositoryManager, Locker $locker, InstallationManager $installationManager, EventDispatcher $eventDispatcher, AutoloadGenerator $autoloadGenerator, WorkTrackerInterface $workTracker)
+    public function __construct(IOInterface $io, Config $config, RootPackageInterface $package, DownloadManager $downloadManager, RepositoryManager $repositoryManager, Locker $locker, InstallationManager $installationManager, EventDispatcher $eventDispatcher, AutoloadGenerator $autoloadGenerator)
     {
         $this->io = $io;
-        $this->workTracker = $workTracker;
         $this->config = $config;
         $this->package = $package;
         $this->downloadManager = $downloadManager;
@@ -184,40 +178,38 @@ class Installer
             $this->mockLocalRepositories($this->repositoryManager);
         }
 
+        $workTracker = $this->io->getWorkTracker();
+
         // TODO remove this BC feature at some point
         // purge old require-dev packages to avoid conflicts with the new way of handling dev requirements
         $devRepo = new InstalledFilesystemRepository(new JsonFile($this->config->get('vendor-dir').'/composer/installed_dev.json'));
         $packages = $devRepo->getPackages();
         if ($packages) {
 
-            $this->workTracker->createBounded(
+            $workTracker->createBound(
                 '<warning>BC Notice: Removing old dev packages to migrate to the new require-dev handling.</warning>',
                 count($packages)
             );
 
             $this->io->writeError('<warning>BC Notice: Removing old dev packages to migrate to the new require-dev handling.</warning>');
             foreach ($packages as $package) {
-                $this->workTracker->ping();
+                $workTracker->ping();
                 if ($this->installationManager->isPackageInstalled($devRepo, $package)) {
                     $this->installationManager->uninstall($devRepo, new UninstallOperation($package));
                 }
             }
             unlink($this->config->get('vendor-dir').'/composer/installed_dev.json');
 
-            $this->workTracker->complete();
+            $workTracker->complete();
         }
         unset($devRepo, $package);
         // end BC
 
         if ($this->runScripts) {
-            $this->workTracker->createUnbound('Dispatching pre update event');
-
             // dispatch pre event
             $eventName = $this->update ? ScriptEvents::PRE_UPDATE_CMD : ScriptEvents::PRE_INSTALL_CMD;
 
             $this->eventDispatcher->dispatchScript($eventName, $this->devMode);
-
-            $this->workTracker->complete();
         }
 
         $this->downloadManager->setPreferSource($this->preferSource);
@@ -305,7 +297,7 @@ class Installer
         if (!$this->dryRun) {
             // write lock
             if ($this->update || !$this->locker->isLocked()) {
-                $this->workTracker->createUnbound('Consolidating changes');
+                $workTracker->createBound('Consolidating changes', $this->devMode && $this->package->getDevRequires() ? 2 : 1);
 
                 $localRepo->reload();
 
@@ -327,7 +319,7 @@ class Installer
                     }
 
                     $this->eventDispatcher->dispatchInstallerEvent(InstallerEvents::PRE_DEPENDENCIES_SOLVING, false, $policy, $pool, $installedRepo, $request);
-                    $solver = new Solver($policy, $pool, $installedRepo, $this->workTracker);
+                    $solver = new Solver($policy, $pool, $installedRepo, $workTracker);
                     $ops = $solver->solve($request, $this->ignorePlatformReqs);
                     $this->eventDispatcher->dispatchInstallerEvent(InstallerEvents::POST_DEPENDENCIES_SOLVING, false, $policy, $pool, $installedRepo, $request, $ops);
 
@@ -336,11 +328,14 @@ class Installer
                             $devPackages[] = $op->getPackage();
                         }
                     }
+
+                    $workTracker->ping();
                 }
 
                 $platformReqs = $this->extractPlatformRequirements($this->package->getRequires());
                 $platformDevReqs = $this->devMode ? $this->extractPlatformRequirements($this->package->getDevRequires()) : array();
 
+                $this->io->getWorkTracker()->createUnbound('Writing lock file');
                 $updatedLock = $this->locker->setLockData(
                     array_diff($localRepo->getCanonicalPackages(), (array) $devPackages),
                     $devPackages,
@@ -353,20 +348,24 @@ class Installer
                     $this->preferLowest,
                     $this->config->get('platform') ?: array()
                 );
+                $workTracker->complete();
+                $workTracker->ping();
 
                 if ($updatedLock) {
                     $this->io->writeError('<info>Writing lock file</info>');
                 }
 
-                $this->workTracker->complete();
+                $workTracker->complete();
             }
 
             if ($this->dumpAutoloader) {
                 // write autoloader
                 if ($this->optimizeAutoloader) {
-                    $this->workTracker->createUnbound('<info>Generating optimized autoload files</info>');
+                    $this->io->writeError('<info>Generating optimized autoload files</info>');
+                    $workTracker->createUnbound('Generating optimized autoload files');
                 } else {
-                    $this->workTracker->createUnbound('<info>Generating autoload files</info>');
+                    $this->io->writeError('<info>Generating autoload files</info>');
+                    $workTracker->createUnbound('Generating autoload files');
                 }
 
                 $this->autoloadGenerator->setDevMode($this->devMode);
@@ -374,7 +373,7 @@ class Installer
                 $this->autoloadGenerator->setRunScripts($this->runScripts);
                 $this->autoloadGenerator->dump($this->config, $localRepo, $this->package, $this->installationManager, 'composer', $this->optimizeAutoloader);
 
-                $this->workTracker->complete();
+                $workTracker->complete();
             }
 
             if ($this->runScripts) {
@@ -390,6 +389,8 @@ class Installer
                 @touch($vendorDir);
             }
         }
+
+        $workTracker->complete();
 
         return 0;
     }
@@ -407,6 +408,7 @@ class Installer
         // init vars
         $lockedRepository = null;
         $repositories = null;
+        $workTracker = $this->io->getWorkTracker();
 
         // initialize locker to create aliased packages
         $installFromLock = !$this->update && $this->locker->isLocked();
@@ -434,9 +436,8 @@ class Installer
             $this->package->getDevRequires()
         );
 
-        $this->workTracker->createUnbound('<info>Loading composer repositories with package information</info>');
-        //$this->io->writeError('<info>Loading composer repositories with package information</info>');
-        $this->workTracker->complete();
+        $this->io->writeError('<info>Loading composer repositories with package information</info>');
+        $workTracker->createBound('Loading composer repositories with package information', $installFromLock ? 0 : 1);
 
         // creating repository pool
         $policy = $this->createPolicy();
@@ -444,12 +445,13 @@ class Installer
         $pool->addRepository($installedRepo, $aliases);
         if (!$installFromLock) {
             $repositories = $this->repositoryManager->getRepositories();
-            $this->workTracker->createBound('Adding repositories', count($repositories));
+            $workTracker->createBound('Adding repositories', count($repositories));
             foreach ($repositories as $repository) {
                 $pool->addRepository($repository, $aliases);
-                $this->workTracker->ping();
+                $workTracker->ping();
             }
-            $this->workTracker->complete();
+            $workTracker->complete();
+            $workTracker->ping();
         }
         // Add the locked repository after the others in case we are doing a
         // partial update so missing packages can be found there still.
@@ -458,13 +460,15 @@ class Installer
             $pool->addRepository($lockedRepository, $aliases);
         }
 
+        $workTracker->complete();
+
         // creating requirements request
         $request = $this->createRequest($this->package, $platformRepo);
 
         if (!$installFromLock) {
             $removedUnstablePackages = array();
             $packages = $localRepo->getPackages();
-            $this->workTracker->createBound('Removing unstable packages from the local repository (if they don\'t match the current stablitity settings)', count($packages));
+            $workTracker->createBound('Removing unstable packages from the local repository (if they don\'t match the current stablitity settings)', count($packages));
             foreach ($packages as $package) {
                 if (
                     !$pool->isPackageAcceptable($package->getNames(), $package->getStability())
@@ -473,9 +477,9 @@ class Installer
                     $removedUnstablePackages[$package->getName()] = true;
                     $request->remove($package->getName(), new Constraint('=', $package->getVersion()));
                 }
-                $this->workTracker->ping();
+                $workTracker->ping();
             }
-            $this->workTracker->complete();
+            $workTracker->complete();
         }
 
         if ($this->update) {
@@ -487,19 +491,22 @@ class Installer
                 $links = $this->package->getRequires();
             }
 
-            $this->workTracker->createBound('<info>Updating dependencies'.($withDevReqs?' (including require-dev)':'') . '</info>', count($links));
+            $this->io->writeError('<info>Updating dependencies'.($withDevReqs?' (including require-dev)':'') . '</info>');
+            $workTracker->createBound('Updating dependencies'.($withDevReqs?' (including require-dev)':''), count($links));
 
             foreach ($links as $link) {
                 $request->install($link->getTarget(), $link->getConstraint());
-                $this->workTracker->ping();
+                $workTracker->ping();
             }
 
-            $this->workTracker->complete();
+            $workTracker->complete();
 
             // if the updateWhitelist is enabled, packages not in it are also fixed
             // to the version specified in the lock, or their currently installed version
             if ($this->updateWhitelist) {
+                $workTracker->createUnbound('Fetching current packages');
                 $currentPackages = $this->getCurrentPackages($withDevReqs, $installedRepo);
+                $workTracker->complete();
 
                 // collect packages to fixate from root requirements as well as installed packages
                 $candidates = array();
@@ -509,6 +516,8 @@ class Installer
                 foreach ($localRepo->getPackages() as $package) {
                     $candidates[$package->getName()] = true;
                 }
+
+                $workTracker->createBound('Updating whitelist', count($candidates));
 
                 // fix them to the version in lock (or currently installed) if they are not updateable
                 foreach ($candidates as $candidate => $dummy) {
@@ -521,17 +530,20 @@ class Installer
                             break;
                         }
                     }
+                    $workTracker->ping();
                 }
+                $workTracker->complete();
             }
         } elseif ($installFromLock) {
 
             if (!$this->locker->isFresh()) {
-                $this->workTracker->log('<warning>Warning: The lock file is not up to date with the latest changes in composer.json. You may be getting outdated dependencies. Run update to update them.</warning>');
+                $workTracker->log('<warning>Warning: The lock file is not up to date with the latest changes in composer.json. You may be getting outdated dependencies. Run update to update them.</warning>');
             }
 
             $packages = $lockedRepository->getPackages();
 
-            $this->workTracker->createBound('<info>Installing dependencies'.($withDevReqs?' (including require-dev)':'').' from lock file </info>', count($packages));
+            $this->io->writeError('<info>Installing dependencies'.($withDevReqs?' (including require-dev)':'').' from lock file </info>');
+            $workTracker->createBound('Installing dependencies'.($withDevReqs?' (including require-dev)':'').' from lock file', count($packages));
 
             foreach ($packages as $package) {
                 $version = $package->getVersion();
@@ -541,17 +553,17 @@ class Installer
                 $constraint = new Constraint('=', $version);
                 $constraint->setPrettyString($package->getPrettyVersion());
                 $request->install($package->getName(), $constraint);
-                $this->workTracker->ping();
+                $workTracker->ping();
             }
 
             $links = $this->locker->getPlatformRequirements($withDevReqs);
-            $this->workTracker->createBound('Installing platform requirements', count($links));
-
+            $workTracker->createBound('Installing platform requirements', count($links));
             foreach ($links as $link) {
                 $request->install($link->getTarget(), $link->getConstraint());
             }
-            $this->workTracker->complete();
-            $this->workTracker->complete();
+            $workTracker->complete();
+
+            $workTracker->complete();
         } else {
 
             if ($withDevReqs) {
@@ -560,15 +572,16 @@ class Installer
                 $links = $this->package->getRequires();
             }
 
-            $this->workTracker->createBound('<info>Installing dependencies'.($withDevReqs?' (including require-dev)':'') . '</info>', count($links));
+            $this->io->writeError('<info>Installing dependencies'.($withDevReqs?' (including require-dev)':'') . '</info>');
+            $workTracker->createBound('Installing dependencies'.($withDevReqs?' (including require-dev)':''), count($links));
 
             foreach ($links as $link) {
 
                 $request->install($link->getTarget(), $link->getConstraint());
-                $this->workTracker->ping();
+                $workTracker->ping();
             }
 
-            $this->workTracker->complete();
+            $workTracker->complete();
         }
 
         // force dev packages to have the latest links if we update or install from a (potentially new) lock
@@ -576,11 +589,9 @@ class Installer
 
         // solve dependencies
         $this->eventDispatcher->dispatchInstallerEvent(InstallerEvents::PRE_DEPENDENCIES_SOLVING, $this->devMode, $policy, $pool, $installedRepo, $request);
-        $solver = new Solver($policy, $pool, $installedRepo, $this->workTracker);
+        $solver = new Solver($policy, $pool, $installedRepo, $workTracker);
         try {
-            $this->workTracker->createUnbound('Solving dependencies');
             $operations = $solver->solve($request, $this->ignorePlatformReqs);
-            $this->workTracker->complete();
             $this->eventDispatcher->dispatchInstallerEvent(InstallerEvents::POST_DEPENDENCIES_SOLVING, $this->devMode, $policy, $pool, $installedRepo, $request, $operations);
         } catch (SolverProblemsException $e) {
             $this->io->writeError('<error>Your requirements could not be resolved to an installable set of packages.</error>');
@@ -602,10 +613,10 @@ class Installer
             $this->io->writeError('Nothing to install or update');
         }
 
+        $workTracker->createBound('Installing', count($operations));
+
         $operations = $this->movePluginsToFront($operations);
         $operations = $this->moveUninstallsToFront($operations);
-
-        $this->workTracker->createBound('Installing', count($operations));
 
         foreach ($operations as $operation) {
             // collect suggestions
@@ -691,9 +702,10 @@ class Installer
                 $localRepo->write();
             }
 
-            $this->workTracker->ping();
+            $workTracker->ping();
         }
-        $this->workTracker->complete();
+
+        $workTracker->complete();
 
         if (!$this->dryRun) {
             // force source/dist urls to be updated for all packages
@@ -898,7 +910,11 @@ class Installer
             $currentPackages = $this->getCurrentPackages($withDevReqs, $installedRepo);
         }
 
-        foreach ($localRepo->getCanonicalPackages() as $package) {
+        $packages = $localRepo->getCanonicalPackages();
+        $this->io->getWorkTracker()->createBound('Processing dev packages', count($packages));
+        foreach ($packages as $package) {
+            $this->io->getWorkTracker()->ping();
+
             // skip non-dev packages
             if (!$package->isDev()) {
                 continue;
@@ -1011,6 +1027,8 @@ class Installer
                 }
             }
         }
+
+        $this->io->getWorkTracker()->complete();
 
         return $operations;
     }
@@ -1304,7 +1322,7 @@ class Installer
      * @param  Composer    $composer
      * @return Installer
      */
-    public static function create(IOInterface $io, Composer $composer, WorkTrackerInterface $workTracker)
+    public static function create(IOInterface $io, Composer $composer)
     {
         return new static(
             $io,
@@ -1315,8 +1333,7 @@ class Installer
             $composer->getLocker(),
             $composer->getInstallationManager(),
             $composer->getEventDispatcher(),
-            $composer->getAutoloadGenerator(),
-            $workTracker
+            $composer->getAutoloadGenerator()
         );
     }
 

@@ -81,11 +81,12 @@ class FileDownloader implements DownloaderInterface
         }
 
         $this->io->writeError("  - Installing <info>" . $package->getName() . "</info> (<comment>" . $package->getFullPrettyVersion() . "</comment>)");
+        $this->io->getWorkTracker()->createBound("Installing <info>" . $package->getName() . "</info> (<comment>" . $package->getFullPrettyVersion() . "</comment>)", 100);
 
         $urls = $package->getDistUrls();
         while ($url = array_shift($urls)) {
             try {
-                return $this->doDownload($package, $path, $url);
+                $result = $this->doDownload($package, $path, $url);
             } catch (\Exception $e) {
                 if ($this->io->isDebug()) {
                     $this->io->writeError('');
@@ -101,7 +102,8 @@ class FileDownloader implements DownloaderInterface
             }
         }
 
-        $this->io->writeError('');
+        $this->io->getWorkTracker()->complete();
+        return $result;
     }
 
     protected function doDownload(PackageInterface $package, $path, $url)
@@ -205,9 +207,12 @@ class FileDownloader implements DownloaderInterface
     public function remove(PackageInterface $package, $path)
     {
         $this->io->writeError("  - Removing <info>" . $package->getName() . "</info> (<comment>" . $package->getFullPrettyVersion() . "</comment>)");
+        $this->io->getWorkTracker()->createUnbound("Removing <info>" . $package->getName() . "</info> (<comment>" . $package->getFullPrettyVersion() . "</comment>)");
+        $this->io->getWorkTracker()->ping();
         if (!$this->filesystem->removeDirectory($path)) {
             throw new \RuntimeException('Could not completely delete '.$path.', aborting.');
         }
+        $this->io->getWorkTracker()->complete();
     }
 
     /**

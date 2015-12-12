@@ -51,7 +51,7 @@ class UpdateCommand extends Command
                 new InputOption('with-dependencies', null, InputOption::VALUE_NONE, 'Add also all dependencies of whitelisted packages to the whitelist.'),
                 new InputOption('verbose', 'v|vv|vvv', InputOption::VALUE_NONE, 'Shows more details including new commits pulled in when updating packages.'),
                 new InputOption('optimize-autoloader', 'o', InputOption::VALUE_NONE, 'Optimize autoloader during autoloader dump.'),
-                new InputOption('pretty', null, InputOption::VALUE_REQUIRED, 'Format for progress, values <info>multi</info>, <info>debug</info>, <info>headings</info>', 'headings'),
+                new InputOption('pretty', null, InputOption::VALUE_REQUIRED, 'Format for progress, values <info>multi</info>, <info>debug</info>, <info>progress-bar</info>, <info>global-progress-bar</info>', 'empty'),
                 new InputOption('classmap-authoritative', 'a', InputOption::VALUE_NONE, 'Autoload classes from the classmap only. Implicitly enables `--optimize-autoloader`.'),
                 new InputOption('ignore-platform-reqs', null, InputOption::VALUE_NONE, 'Ignore platform requirements (php & ext- packages).'),
                 new InputOption('prefer-stable', null, InputOption::VALUE_NONE, 'Prefer stable versions of dependencies.'),
@@ -81,6 +81,9 @@ EOT
     protected function execute(InputInterface $input, OutputInterface $output)
     {
         $io = $this->getIO();
+
+        $io->setWorkTracker(new UnboundWorkTracker('Composer Update', $this->getWorkTrackerFormatter($input, $output)));
+
         if ($input->getOption('no-custom-installers')) {
             $io->writeError('<warning>You are using the deprecated option "no-custom-installers". Use "no-plugins" instead.</warning>');
             $input->setOption('no-plugins', true);
@@ -96,10 +99,7 @@ EOT
         $commandEvent = new CommandEvent(PluginEvents::COMMAND, 'update', $input, $output);
         $composer->getEventDispatcher()->dispatch($commandEvent->getName(), $commandEvent);
 
-        $masterWorkTracker = new UnboundWorkTracker('Composer Install', $this->getWorkTrackerFormatter($input, $output));
-        $workTracker = new ContextWorkTracker($masterWorkTracker);
-
-        $install = Installer::create($io, $composer, $workTracker);
+        $install = Installer::create($io, $composer);
 
         $preferSource = false;
         $preferDist = false;

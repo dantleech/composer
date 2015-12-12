@@ -12,6 +12,7 @@
 
 namespace Composer\Repository;
 
+use Composer\IO\WorkTracker\Formatter\EmptyFormatter;
 use Composer\TestCase;
 
 class RepositoryManagerTest extends TestCase

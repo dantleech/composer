@@ -93,7 +93,13 @@ class ProcessExecutor
             return;
         }
 
-        echo $buffer;
+        if($this->io == null) {
+            echo $buffer;
+        } else {
+            // output the buffer through Composer's IOInterface to ensure that
+            // things like progress bars are handled correctly.
+            $this->io->write(rtrim($buffer));
+        };
     }
 
     public static function getTimeout()

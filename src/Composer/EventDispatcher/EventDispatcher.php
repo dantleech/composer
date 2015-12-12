@@ -45,6 +45,7 @@ class EventDispatcher
     protected $loader;
     protected $process;
     protected $listeners;
+    
     private $eventStack;
 
     /**
@@ -149,11 +150,15 @@ class EventDispatcher
 
         $this->pushEvent($event);
 
+        $this->io->getWorkTracker()->createBound('Running scripts for `' . $event->getName() . '`', count($listeners));
+
         $return = 0;
         foreach ($listeners as $callable) {
             if (!is_string($callable) && is_callable($callable)) {
+                $this->io->getWorkTracker()->createUnbound('Invoking callback');
                 $event = $this->checkListenerExpectedEvent($callable, $event);
                 $return = false === call_user_func($callable, $event) ? 1 : 0;
+                $this->io->getWorkTracker()->complete();
             } elseif ($this->isComposerScript($callable)) {
                 if ($this->io->isVerbose()) {
                     $this->io->writeError(sprintf('> %s: %s', $event->getName(), $callable));
@@ -168,10 +173,12 @@ class EventDispatcher
 
                 if (!class_exists($className)) {
                     $this->io->writeError('<warning>Class '.$className.' is not autoloadable, can not call '.$event->getName().' script</warning>');
+                    $this->io->getWorkTracker()->ping();
                     continue;
                 }
                 if (!is_callable($callable)) {
                     $this->io->writeError('<warning>Method '.$callable.' is not callable, can not call '.$event->getName().' script</warning>');
+                    $this->io->getWorkTracker()->ping();
                     continue;
                 }
 
@@ -190,17 +197,25 @@ class EventDispatcher
                 } else {
                     $this->io->writeError(sprintf('> %s', $exec));
                 }
+                $this->io->getWorkTracker()->createUnbound('Executing `' . $exec . '`');
+
                 if (0 !== ($exitCode = $this->process->execute($exec))) {
                     $this->io->writeError(sprintf('<error>Script %s handling the %s event returned with an error</error>', $callable, $event->getName()));
 
                     throw new \RuntimeException('Error Output: '.$this->process->getErrorOutput(), $exitCode);
                 }
+
+                $this->io->getWorkTracker()->complete();
             }
 
             if ($event->isPropagationStopped()) {
                 break;
             }
+
+            $this->io->getWorkTracker()->ping();
         }
+
+        $this->io->getWorkTracker()->complete();
 
         $this->popEvent();
 
@@ -222,7 +237,10 @@ class EventDispatcher
             $this->io->writeError(sprintf('> %s::%s', $className, $methodName));
         }
 
-        return $className::$methodName($event);
+        $this->io->getWorkTracker()->createUnbound(sprintf('Calling `%s::%s`', $className, $methodName));
+        $result = $className::$methodName($event);
+        $this->io->getWorkTracker()->complete();
+        return $result;
     }
 
     /**

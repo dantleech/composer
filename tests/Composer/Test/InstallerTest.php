@@ -14,9 +14,6 @@ namespace Composer\Test;
 
 use Composer\Installer;
 use Composer\Console\Application;
-use Composer\IO\WorkTracker\Formatter\EmptyFormatter;
-use Composer\IO\WorkTracker\Formatter\HeadingFormatter;
-use Composer\IO\WorkTracker\UnboundWorkTracker;
 use Composer\Json\JsonFile;
 use Composer\Repository\ArrayRepository;
 use Composer\Repository\RepositoryManager;
@@ -52,6 +49,7 @@ class InstallerTest extends TestCase
     public function testInstaller(RootPackageInterface $rootPackage, $repositories, array $options)
     {
         $io = $this->getMock('Composer\IO\IOInterface');
+        $io->expects($this->any())->method('getWorkTracker')->willReturn($this->getMock('Composer\IO\WorkTracker\WorkTrackerInterface'));
 
         $downloadManager = $this->getMock('Composer\Downloader\DownloadManager', array(), array($io));
         $config = $this->getMock('Composer\Config');
@@ -72,7 +70,7 @@ class InstallerTest extends TestCase
         $eventDispatcher = $this->getMockBuilder('Composer\EventDispatcher\EventDispatcher')->disableOriginalConstructor()->getMock();
         $autoloadGenerator = $this->getMockBuilder('Composer\Autoload\AutoloadGenerator')->disableOriginalConstructor()->getMock();
 
-        $installer = new Installer($io, $config, clone $rootPackage, $downloadManager, $repositoryManager, $locker, $installationManager, $eventDispatcher, $autoloadGenerator, createWorkTrackerForTesting(new EmptyFormatter()));
+        $installer = new Installer($io, $config, clone $rootPackage, $downloadManager, $repositoryManager, $locker, $installationManager, $eventDispatcher, $autoloadGenerator);
         $result = $installer->run();
         $this->assertSame(0, $result);
 
@@ -206,8 +204,9 @@ class InstallerTest extends TestCase
         $symfonyOutput->expects($this->any())
            ->method('write')
            ->will($this->returnCallback($callback));
+        $io->expects($this->any())->method('getWorkTracker')->willReturn($this->getMock('Composer\IO\WorkTracker\WorkTrackerInterface'));
 
-        $installer = Installer::create($io, $composer, createWorkTrackerForTesting(new HeadingFormatter($symfonyOutput, true)));
+        $installer = Installer::create($io, $composer);
 
         $application = new Application;
         $application->get('install')->setCode(function ($input, $output) use ($installer) {

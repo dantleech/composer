@@ -32,8 +32,8 @@ class PathDownloader extends FileDownloader
         $fileSystem = new Filesystem();
         $this->filesystem->removeDirectory($path);
 
-        $this->io->writeError(sprintf(
-            '  - Installing <info>%s</info> (<comment>%s</comment>)',
+        $this->io->getWorkTracker()->createUnbound(sprintf(
+            'Installing <info>%s</info> (<comment>%s</comment>)',
             $package->getName(),
             $package->getFullPrettyVersion()
         ));
@@ -56,6 +56,6 @@ class PathDownloader extends FileDownloader
             $this->io->writeError(sprintf('    Mirrored from %s', $url));
         }
 
-        $this->io->writeError('');
+        $this->io->getWorkTracker()->complete();
     }
 }

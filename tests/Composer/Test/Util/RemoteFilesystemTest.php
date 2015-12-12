@@ -25,6 +25,12 @@ class RemoteFilesystemTest extends \PHPUnit_Framework_TestCase
             ->will($this->returnValue(false))
         ;
 
+        $io
+            ->expects($this->any())
+            ->method('getWorkTracker')
+            ->willReturn($this->getMock('Composer\IO\WorkTracker\WorkTrackerInterface'))
+        ;
+
         $res = $this->callGetOptionsForUrl($io, array('http://example.org', array()));
         $this->assertTrue(isset($res['http']['header']) && is_array($res['http']['header']), 'getOptions must return an array with headers');
     }
@@ -108,9 +114,11 @@ class RemoteFilesystemTest extends \PHPUnit_Framework_TestCase
     public function testCallbackGetNotifyProgress()
     {
         $io = $this->getMock('Composer\IO\IOInterface');
+
         $io
-            ->expects($this->once())
-            ->method('overwriteError')
+            ->expects($this->any())
+            ->method('getWorkTracker')
+            ->willReturn($this->getMock('Composer\IO\WorkTracker\WorkTrackerInterface'))
         ;
 
         $fs = new RemoteFilesystem($io);

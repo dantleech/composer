@@ -40,6 +40,8 @@ class XzDownloaderTest extends \PHPUnit_Framework_TestCase
         ;
 
         $io = $this->getMock('Composer\IO\IOInterface');
+        $io->expects($this->any())->method('getWorkTracker')->willReturn($this->getMock('Composer\IO\WorkTracker\WorkTrackerInterface'));
+
         $config = $this->getMock('Composer\Config');
         $config->expects($this->any())
             ->method('get')

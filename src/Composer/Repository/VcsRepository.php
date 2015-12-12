@@ -13,6 +13,7 @@
 namespace Composer\Repository;
 
 use Composer\Downloader\TransportException;
+use Composer\IO\WorkTracker\WorkTrackerInterface;
 use Composer\Repository\Vcs\VcsDriverInterface;
 use Composer\Semver\VersionParser;
 use Composer\Package\Loader\ArrayLoader;
@@ -32,6 +33,7 @@ class VcsRepository extends ArrayRepository implements ConfigurableRepositoryInt
     protected $packageName;
     protected $verbose;
     protected $io;
+    protected $workTracker;
     protected $config;
     protected $versionParser;
     protected $type;
@@ -132,13 +134,18 @@ class VcsRepository extends ArrayRepository implements ConfigurableRepositoryInt
             }
         }
 
-        foreach ($driver->getTags() as $tag => $identifier) {
+        $tags = $driver->getTags();
+        $workTracker = $this->io->getWorkTracker();
+        $workTracker->createBound('Reading tags from ' . $this->url, count($tags));
+        foreach ($tags as $tag => $identifier) {
             $msg = 'Reading composer.json of <info>' . ($this->packageName ?: $this->url) . '</info> (<comment>' . $tag . '</comment>)';
+            $workTracker->ping();
+            $workTracker->createUnbound($msg);
             if ($verbose) {
                 $this->io->writeError($msg);
-            } else {
+            }/* else {
                 $this->io->overwriteError($msg, false);
-            }
+            }*/
 
             // strip the release- prefix from tags if present
             $tag = str_replace('release-', '', $tag);
@@ -147,6 +154,7 @@ class VcsRepository extends ArrayRepository implements ConfigurableRepositoryInt
                 if ($verbose) {
                     $this->io->writeError('<warning>Skipped tag '.$tag.', invalid tag name</warning>');
                 }
+                $workTracker->complete();
                 continue;
             }
 
@@ -155,6 +163,7 @@ class VcsRepository extends ArrayRepository implements ConfigurableRepositoryInt
                     if ($verbose) {
                         $this->io->writeError('<warning>Skipped tag '.$tag.', no composer file</warning>');
                     }
+                    $workTracker->complete();
                     continue;
                 }
 
@@ -176,6 +185,7 @@ class VcsRepository extends ArrayRepository implements ConfigurableRepositoryInt
                     if ($verbose) {
                         $this->io->writeError('<warning>Skipped tag '.$tag.', tag ('.$parsedTag.') does not match version ('.$data['version_normalized'].') in composer.json</warning>');
                     }
+                    $workTracker->complete();
                     continue;
                 }
 
@@ -188,26 +198,34 @@ class VcsRepository extends ArrayRepository implements ConfigurableRepositoryInt
                 if ($verbose) {
                     $this->io->writeError('<warning>Skipped tag '.$tag.', '.($e instanceof TransportException ? 'no composer file was found' : $e->getMessage()).'</warning>');
                 }
+                $workTracker->complete();
                 continue;
             }
+            $workTracker->complete();
         }
+        $workTracker->complete();
 
-        if (!$verbose) {
+        /*if (!$verbose) {
             $this->io->overwriteError('', false);
-        }
+        }*/
 
-        foreach ($driver->getBranches() as $branch => $identifier) {
+        $branches = $driver->getBranches();
+        $workTracker->createBound('Reading branches from ' . $this->url, count($branches));
+        foreach ($branches as $branch => $identifier) {
             $msg = 'Reading composer.json of <info>' . ($this->packageName ?: $this->url) . '</info> (<comment>' . $branch . '</comment>)';
-            if ($verbose) {
+            $workTracker->ping();
+            $workTracker->createUnbound($msg);
+            /*if ($verbose) {
                 $this->io->writeError($msg);
             } else {
                 $this->io->overwriteError($msg, false);
-            }
+            }*/
 
             if (!$parsedBranch = $this->validateBranch($branch)) {
                 if ($verbose) {
                     $this->io->writeError('<warning>Skipped branch '.$branch.', invalid name</warning>');
                 }
+                $workTracker->complete();
                 continue;
             }
 
@@ -216,6 +234,7 @@ class VcsRepository extends ArrayRepository implements ConfigurableRepositoryInt
                     if ($verbose) {
                         $this->io->writeError('<warning>Skipped branch '.$branch.', no composer file</warning>');
                     }
+                    $workTracker->complete();
                     continue;
                 }
 
@@ -244,6 +263,7 @@ class VcsRepository extends ArrayRepository implements ConfigurableRepositoryInt
                 if ($verbose) {
                     $this->io->writeError('<warning>Skipped branch '.$branch.', no composer file was found</warning>');
                 }
+                $workTracker->complete();
                 continue;
             } catch (\Exception $e) {
                 if (!$verbose) {
@@ -252,14 +272,17 @@ class VcsRepository extends ArrayRepository implements ConfigurableRepositoryInt
                 $this->branchErrorOccurred = true;
                 $this->io->writeError('<error>Skipped branch '.$branch.', '.$e->getMessage().'</error>');
                 $this->io->writeError('');
+                $workTracker->complete();
                 continue;
             }
+            $workTracker->complete();
         }
+        $workTracker->complete();
         $driver->cleanup();
 
-        if (!$verbose) {
+        /*if (!$verbose) {
             $this->io->overwriteError('', false);
-        }
+        }*/
 
         if (!$this->getPackages()) {
             throw new InvalidRepositoryException('No valid composer.json was found in any branch or tag of '.$this->url.', could not load a package from it.');

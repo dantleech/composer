@@ -17,8 +17,10 @@ use Composer\Console\Application;
 use Composer\IO\IOInterface;
 use Composer\IO\NullIO;
 use Composer\IO\WorkTracker\Formatter\DebugFormatter;
+use Composer\IO\WorkTracker\Formatter\EmptyFormatter;
+use Composer\IO\WorkTracker\Formatter\GlobalProgressBarFormatter;
 use Composer\IO\WorkTracker\Formatter\MultiProgressFormatter;
-use Composer\IO\WorkTracker\Formatter\HeadingFormatter;
+use Composer\IO\WorkTracker\Formatter\ProgressBarFormatter;
 use InvalidArgumentException;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\Output;
@@ -128,7 +130,6 @@ abstract class Command extends BaseCommand
      * @param \Symfony\Component\Console\Input\InputInterface   $input
      * @param \Symfony\Component\Console\Output\OutputInterface $output
      * @return \Composer\IO\WorkTracker\FormatterInterface
-     * @internal param \Composer\IO\IOInterface $io
      */
     public function getWorkTrackerFormatter(InputInterface $input, OutputInterface $output)
     {
@@ -137,11 +138,46 @@ abstract class Command extends BaseCommand
             return new DebugFormatter($output);
         } else if($pretty == 'multi') {
             return new MultiProgressFormatter($output);
-        } else if($pretty == 'headings') {
-            return new HeadingFormatter($output, true);
+        } else if($pretty == 'progress-bar') {
+            return new ProgressBarFormatter($output);
+        } else if($pretty == 'global-progress-bar') {
+            // these are all just estimations and may be adjusted
+            // there is quite possibly missing steps
+            $heuristics = [
+                'weights' => [
+                    'Running scripts for `command`' => 1,
+                    'Running scripts for `pre-update-cmd`' => 1,
+                    'Running scripts for `pre-install-cmd`' => 1,
+                    'Running scripts for `pre-dependencies-solving`' => 1,
+                    'Running scripts for `post-dependencies-solving`' => 1,
+                    'Removing unstable packages from the local repository (if they don\'t match the current stablitity settings)' => 1,
+                    'Generating autoload files' => 5,
+                    'Running scripts for `post-install-cmd`' => 5,
+                    'Consolidating changes' => 5
+                ]
+            ];
+            if($this->getName() == 'update') {
+                $heuristics['numOperations'] = 10;
+                $heuristics['weights']['Loading composer repositories with package information'] = 10;
+                $heuristics['weights']['Processing dev packages'] = 5;
+                $heuristics['weights']['Updating dependencies (including require-dev)'] = 5;
+                $heuristics['weights']['Updating dependencies'] = 5;
+                $heuristics['weights']['Solving dependencies'] = 20;
+                $heuristics['weights']['Installing'] = 35; // 1 + 1 + 10 + 1 + 5 + 5 + 1 + 20 + 1 + 5 + x + 5 + 5 + 5 = 100, x = 35
+            } else if($this->getName() == 'install') {
+                $heuristics['weights']['Loading composer repositories with package information'] = 1;
+                $heuristics['weights']['Installing dependencies (including require-dev) from lock file'] = 1;
+                $heuristics['weights']['Installing dependencies from lock file'] = 1;
+                $heuristics['weights']['Solving dependencies'] = 10;
+                $heuristics['weights']['Processing dev packages'] = 2;
+                $heuristics['weights']['Installing'] = 70; // 1 + 1+ 1 +1 + 2 + 1 + 10 + 1 +2
+            }
+            return new GlobalProgressBarFormatter($output, $heuristics);
+        } else if($pretty == 'empty') {
+            return new EmptyFormatter($output);
         } else {
-            throw new InvalidArgumentException('Invalid value for --pretty: ' . $pretty);
+            throw new InvalidArgumentException('Invalid option: `--pretty=' . $pretty . '`');
         }
-
     }
+
 }

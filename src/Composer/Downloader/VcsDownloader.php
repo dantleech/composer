@@ -54,6 +54,7 @@ abstract class VcsDownloader implements DownloaderInterface, ChangeReportInterfa
         }
 
         $this->io->writeError("  - Installing <info>" . $package->getName() . "</info> (<comment>" . $package->getFullPrettyVersion() . "</comment>)");
+        $this->io->getWorkTracker()->createUnbound("Installing <info>" . $package->getName() . "</info> (<comment>" . $package->getFullPrettyVersion() . "</comment>)");
         $this->filesystem->emptyDirectory($path);
 
         $urls = $package->getSourceUrls();
@@ -76,6 +77,7 @@ abstract class VcsDownloader implements DownloaderInterface, ChangeReportInterfa
             }
         }
 
+        $this->io->getWorkTracker()->complete();
         $this->io->writeError('');
     }
 
@@ -104,6 +106,7 @@ abstract class VcsDownloader implements DownloaderInterface, ChangeReportInterfa
         }
 
         $this->io->writeError("  - Updating <info>" . $name . "</info> (<comment>" . $from . "</comment> => <comment>" . $to . "</comment>)");
+        $this->io->getWorkTracker()->createUnbound("Updating <info>" . $name . "</info> (<comment>" . $from . "</comment> => <comment>" . $to . "</comment>)");
 
         $this->cleanChanges($initial, $path, true);
         $urls = $target->getSourceUrls();
@@ -153,7 +156,7 @@ abstract class VcsDownloader implements DownloaderInterface, ChangeReportInterfa
             }
         }
 
-        $this->io->writeError('');
+        $this->io->getWorkTracker()->complete();
     }
 
     /**
@@ -162,10 +165,14 @@ abstract class VcsDownloader implements DownloaderInterface, ChangeReportInterfa
     public function remove(PackageInterface $package, $path)
     {
         $this->io->writeError("  - Removing <info>" . $package->getName() . "</info> (<comment>" . $package->getPrettyVersion() . "</comment>)");
+        $this->io->getWorkTracker()->createUnbound("Removing <info>" . $package->getName() . "</info> (<comment>" . $package->getPrettyVersion() . "</comment>)");
+        $this->io->getWorkTracker()->ping();
         $this->cleanChanges($package, $path, false);
+        $this->io->getWorkTracker()->ping();
         if (!$this->filesystem->removeDirectory($path)) {
             throw new \RuntimeException('Could not completely delete '.$path.', aborting.');
         }
+        $this->io->getWorkTracker()->complete();
     }
 
     /**

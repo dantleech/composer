@@ -9,8 +9,6 @@ use Symfony\Component\Console\Output\OutputInterface;
 /**
  * A formatter which prints a message at the beginning of each main task.
  * Through doing so look exactly like Composer without the work tracker.
- *
- * @package Composer\IO\WorkTracker\Formatter
  */
 class HeadingFormatter implements FormatterInterface {
 
@@ -43,7 +41,9 @@ class HeadingFormatter implements FormatterInterface {
             if($this->onlyInfo && !$this->startsWith($workTracker->getTitle(), '<info>')) {
                 return;
             }
-            $this->output->write($workTracker->getTitle(), true);
+            $this->output->writeln($workTracker->getTitle());
+        } else if($this->startsWith($workTracker->getTitle(), '> ')) {
+            $this->output->writeln($workTracker->getTitle());
         }
     }
 
@@ -66,7 +66,8 @@ class HeadingFormatter implements FormatterInterface {
     {
     }
 
-    private function startsWith($haystack, $needle) {
+    private function startsWith($haystack, $needle)
+    {
         $length = strlen($needle);
         return (substr($haystack, 0, $length) === $needle);
     }

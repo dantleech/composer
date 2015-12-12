@@ -12,6 +12,7 @@
 
 namespace Composer\Test\Repository;
 
+use Composer\IO\WorkTracker\Formatter\EmptyFormatter;
 use Symfony\Component\Process\ExecutableFinder;
 use Composer\Package\Dumper\ArrayDumper;
 use Composer\Repository\VcsRepository;

@@ -14,6 +14,7 @@ namespace Composer\Test\Downloader;
 
 use Composer\Downloader\PerforceDownloader;
 use Composer\Config;
+use Composer\IO\WorkTracker\Formatter\EmptyFormatter;
 use Composer\Repository\VcsRepository;
 use Composer\IO\IOInterface;
 

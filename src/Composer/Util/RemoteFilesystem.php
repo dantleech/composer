@@ -173,7 +173,7 @@ class RemoteFilesystem
         $ctx = StreamContextFactory::getContext($fileUrl, $options, array('notification' => array($this, 'callbackGet')));
 
         if ($this->progress) {
-            $this->io->writeError("    Downloading: <comment>Connecting...</comment>", false);
+            //$this->io->writeError("    Downloading: <comment>Connecting...</comment>", false);
         }
 
         $errorMessage = '';
@@ -227,7 +227,7 @@ class RemoteFilesystem
         }
 
         if ($this->progress && !$this->retry) {
-            $this->io->overwriteError("    Downloading: <comment>100%</comment>");
+            //$this->io->overwriteError("    Downloading: <comment>100%</comment>");
         }
 
         // decode gzip
@@ -385,8 +385,12 @@ class RemoteFilesystem
                     $progression = round($bytesTransferred / $this->bytesMax * 100);
 
                     if ((0 === $progression % 5) && 100 !== $progression && $progression !== $this->lastProgress) {
-                        $this->lastProgress = $progression;
-                        $this->io->overwriteError("    Downloading: <comment>$progression%</comment>", false);
+                        //$this->lastProgress = $progression;
+                        while($this->lastProgress < $progression) {
+                            $this->io->getWorkTracker()->ping();
+                            $this->lastProgress++;
+                        }
+                        //$this->io->overwriteError("    Downloading: <comment>$progression%</comment>", false);
                     }
                 }
                 break;

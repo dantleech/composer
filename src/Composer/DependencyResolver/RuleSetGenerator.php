@@ -152,7 +152,7 @@ class RuleSetGenerator
         $workQueue = new \SplQueue;
         $workQueue->enqueue($package);
 
-        $this->workTracker->createUnbound('Whitelist from package');
+        $this->workTracker->createUnbound('Whitelisting from <info>' . $package->getName() . '</info>' . ' (<comment>' . $package->getPrettyVersion() . '</comment>)');
 
         while (!$workQueue->isEmpty()) {
 
@@ -193,7 +193,7 @@ class RuleSetGenerator
         $workQueue = new \SplQueue;
         $workQueue->enqueue($package);
 
-        $this->workTracker->createUnbound('Add rules for package ' . $package->getName());
+        $this->workTracker->createUnbound('Adding rules for <info>' . $package->getName() . '</info>' . ' (<comment>' . $package->getPrettyVersion() . '</comment>)');
 
         while (!$workQueue->isEmpty()) {
             $package = $workQueue->dequeue();
@@ -280,7 +280,7 @@ class RuleSetGenerator
 
     protected function whitelistFromJobs()
     {
-        $this->workTracker->createBound('Whitelist from jobs', count($this->jobs));
+        $this->workTracker->createBound('Whitelisting from jobs', count($this->jobs));
         foreach ($this->jobs as $job) {
             switch ($job['cmd']) {
                 case 'install':
@@ -342,28 +342,36 @@ class RuleSetGenerator
 
         $this->workTracker->createBound(
             sprintf('Getting rules for "%s" jobs with "%s" installed packages', count($jobs), count($installedMap)),
-            count($this->installedMap) * 2
+            4
         );
 
         $this->whitelistedMap = array();
+        $this->workTracker->createBound('Whitelisting from packages', count($installedMap));
         foreach ($this->installedMap as $package) {
             $this->whitelistFromPackage($package);
             $this->workTracker->ping();
         }
+        $this->workTracker->complete();
+        $this->workTracker->ping();
 
         $this->whitelistFromJobs();
+        $this->workTracker->ping();
 
         $this->pool->setWhitelist($this->whitelistedMap);
 
         $this->addedMap = array();
+        $this->workTracker->createBound('Adding from packages', count($installedMap));
         foreach ($this->installedMap as $package) {
             $this->workTracker->ping();
             $this->addRulesForPackage($package, $ignorePlatformReqs);
         }
-
         $this->workTracker->complete();
+        $this->workTracker->ping();
 
         $this->addRulesForJobs($ignorePlatformReqs);
+        $this->workTracker->ping();
+
+        $this->workTracker->complete();
 
         return $this->rules;
     }

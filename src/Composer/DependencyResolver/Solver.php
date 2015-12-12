@@ -211,29 +211,33 @@ class Solver
      */
     public function solve(Request $request, $ignorePlatformReqs = false)
     {
+        $this->workTracker->createBound('Solving dependencies', 5);
+
         $this->jobs = $request->getJobs();
 
         $this->setupInstalledMap();
         $this->rules = $this->ruleSetGenerator->getRulesFor($this->jobs, $this->installedMap, $ignorePlatformReqs);
+        $this->workTracker->ping();
         $this->checkForRootRequireProblems($ignorePlatformReqs);
         $this->decisions = new Decisions($this->pool);
         $this->watchGraph = new RuleWatchGraph;
 
-        $this->workTracker->createUnbound('Adding rules', count($this->rules));
-
+        $this->workTracker->createBound('Adding rules', count($this->rules));
         foreach ($this->rules as $rule) {
             $this->workTracker->ping();
             $this->watchGraph->insert(new RuleWatchNode($rule));
         }
-
         $this->workTracker->complete();
+        $this->workTracker->ping();
 
         /* make decisions based on job/update assertions */
         $this->makeAssertionRuleDecisions();
+        $this->workTracker->ping();
 
         $this->workTracker->createUnbound('Running SAT');
         $this->runSat(true);
         $this->workTracker->complete();
+        $this->workTracker->ping();
 
         $this->workTracker->createBound('Making decisions for undecided packages', count($this->installedMap));
 
@@ -245,12 +249,15 @@ class Solver
         }
 
         $this->workTracker->complete();
+        $this->workTracker->ping();
 
         if ($this->problems) {
             throw new SolverProblemsException($this->problems, $this->installedMap);
         }
 
         $transaction = new Transaction($this->policy, $this->pool, $this->installedMap, $this->decisions);
+
+        $this->workTracker->complete();
 
         return $transaction->getOperations();
     }

@@ -12,6 +12,11 @@
 
 namespace Composer\IO;
 
+use Composer\IO\WorkTracker\AbstractWorkTracker;
+use Composer\IO\WorkTracker\ContextWorkTracker;
+use Composer\IO\WorkTracker\Formatter\InteractsWithConsoleOutput;
+use Composer\IO\WorkTracker\Formatter\ProgressBarFormatter;
+use Composer\IO\WorkTracker\WorkTrackerInterface;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -37,15 +42,17 @@ class ConsoleIO extends BaseIO
     /**
      * Constructor.
      *
-     * @param InputInterface  $input     The input instance
-     * @param OutputInterface $output    The output instance
-     * @param HelperSet       $helperSet The helperSet instance
+     * @param InputInterface       $input     The input instance
+     * @param OutputInterface      $output    The output instance
+     * @param HelperSet            $helperSet The helperSet instance
+     * @param WorkTrackerInterface $workTracker
      */
-    public function __construct(InputInterface $input, OutputInterface $output, HelperSet $helperSet)
+    public function __construct(InputInterface $input, OutputInterface $output, HelperSet $helperSet, WorkTrackerInterface $workTracker)
     {
         $this->input = $input;
         $this->output = $output;
         $this->helperSet = $helperSet;
+        $this->workTracker = new ContextWorkTracker($workTracker);
     }
 
     public function enableDebugging($startTime)
@@ -124,14 +131,23 @@ class ConsoleIO extends BaseIO
             }, (array) $messages);
         }
 
+        $wt = $this->workTracker->getWorkTracker();
+        if($wt instanceof AbstractWorkTracker && $wt->getFormatter() instanceof InteractsWithConsoleOutput) {
+            $formatter = $wt->getFormatter();
+        }
+
         if (true === $stderr && $this->output instanceof ConsoleOutputInterface) {
+            if(isset($formatter)) { $formatter->beforeWrite(); }
             $this->output->getErrorOutput()->write($messages, $newline);
+            if(isset($formatter)) { $formatter->afterWrite(); }
             $this->lastMessageErr = join($newline ? "\n" : '', (array) $messages);
 
             return;
         }
 
+        if(isset($formatter)) { $formatter->beforeWrite(); }
         $this->output->write($messages, $newline);
+        if(isset($formatter)) { $formatter->afterWrite(); }
         $this->lastMessage = join($newline ? "\n" : '', (array) $messages);
     }
 
@@ -256,5 +272,21 @@ class ConsoleIO extends BaseIO
         $this->writeError($question, false);
 
         return \Seld\CliPrompt\CliPrompt::hiddenPrompt(true);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getWorkTracker()
+    {
+        return $this->workTracker;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function setWorkTracker(WorkTrackerInterface $workTracker)
+    {
+        $this->workTracker = new ContextWorkTracker($workTracker);
     }
 }

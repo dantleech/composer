@@ -20,15 +20,5 @@ if (function_exists('date_default_timezone_set') && function_exists('date_defaul
     date_default_timezone_set(@date_default_timezone_get());
 }
 
-/**
- * Creates a stub work tracker used for testing
- *
- * @return \Composer\IO\WorkTracker\ContextWorkTracker
- */
-function createWorkTrackerForTesting($formatter) {
-    $masterWorkTracker = new UnboundWorkTracker('Composer Install', $formatter);
-    return new ContextWorkTracker($masterWorkTracker);
-}
-
 require __DIR__.'/../src/bootstrap.php';
 require __DIR__.'/Composer/TestCase.php';

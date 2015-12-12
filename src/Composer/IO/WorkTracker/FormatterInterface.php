@@ -32,4 +32,5 @@ interface FormatterInterface
      * @param AbstractWorkTracker $workTracker
      */
     public function ping(AbstractWorkTracker $workTracker);
+
 }
