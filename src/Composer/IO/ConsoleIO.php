@@ -131,23 +131,13 @@ class ConsoleIO extends BaseIO
             }, (array) $messages);
         }
 
-        $wt = $this->workTracker->getWorkTracker();
-        if($wt instanceof AbstractWorkTracker && $wt->getFormatter() instanceof InteractsWithConsoleOutput) {
-            $formatter = $wt->getFormatter();
-        }
-
         if (true === $stderr && $this->output instanceof ConsoleOutputInterface) {
-            if(isset($formatter)) { $formatter->beforeWrite(); }
             $this->output->getErrorOutput()->write($messages, $newline);
-            if(isset($formatter)) { $formatter->afterWrite(); }
             $this->lastMessageErr = join($newline ? "\n" : '', (array) $messages);
-
             return;
         }
-
-        if(isset($formatter)) { $formatter->beforeWrite(); }
+        
         $this->output->write($messages, $newline);
-        if(isset($formatter)) { $formatter->afterWrite(); }
         $this->lastMessage = join($newline ? "\n" : '', (array) $messages);
     }
 

@@ -16,13 +16,6 @@ use Composer\Composer;
 use Composer\Console\Application;
 use Composer\IO\IOInterface;
 use Composer\IO\NullIO;
-use Composer\IO\WorkTracker\AbstractWorkTracker;
-use Composer\IO\WorkTracker\Formatter\DebugFormatter;
-use Composer\IO\WorkTracker\Formatter\EmptyFormatter;
-use Composer\IO\WorkTracker\Formatter\GlobalProgressBarFormatter;
-use Composer\IO\WorkTracker\Formatter\MultiProgressFormatter;
-use Composer\IO\WorkTracker\Formatter\ProgressBarFormatter;
-use InvalidArgumentException;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\Output;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -123,38 +116,6 @@ abstract class Command extends BaseCommand
         }
 
         parent::initialize($input, $output);
-    }
-
-    /**
-     * Returns a work tracker formatter based upon the `--pretty` option.
-     *
-     * @param \Symfony\Component\Console\Input\InputInterface   $input
-     * @param \Symfony\Component\Console\Output\OutputInterface $output
-     * @param array                                             $heuristics
-     * @return \Composer\IO\WorkTracker\FormatterInterface
-     */
-    public function getWorkTrackerFormatter(InputInterface $input, OutputInterface $output, array $heuristics)
-    {
-        // if it has already been overidden
-        $currentWT = $this->getIO()->getWorkTracker()->getWorkTracker();
-        if($currentWT instanceof AbstractWorkTracker && !($currentWT->getFormatter() instanceof EmptyFormatter)) {
-            return $currentWT->getFormatter();
-        }
-
-        $pretty = $input->getOption('pretty');
-        if ($pretty == 'debug') {
-            return new DebugFormatter($output);
-        } else if($pretty == 'multi') {
-            return new MultiProgressFormatter($output);
-        } else if($pretty == 'progress-bar') {
-            return new ProgressBarFormatter($output);
-        } else if($pretty == 'global-progress-bar') {
-            return new GlobalProgressBarFormatter($output, $heuristics);
-        } else if($pretty == 'empty') {
-            return new EmptyFormatter($output);
-        } else {
-            throw new InvalidArgumentException('Invalid option: `--pretty=' . $pretty . '`');
-        }
     }
 
 }

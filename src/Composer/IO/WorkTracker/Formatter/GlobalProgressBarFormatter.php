@@ -25,9 +25,9 @@ class GlobalProgressBarFormatter extends ProgressBarFormatter
      * @param array           $operationHeuristics a set of heuristics about how long
      *                                             the task is and which parts take the most time to complete
      */
-    public function __construct(OutputInterface $output, $operationHeuristics)
+    public function __construct(OutputInterface $output, $operationHeuristics, $outputLog = true)
     {
-        parent::__construct($output);
+        parent::__construct($output, $outputLog);
 
         $this->operationHeuristics = $operationHeuristics;
         $this->hasTaskToDisplay = true;
@@ -85,17 +85,8 @@ class GlobalProgressBarFormatter extends ProgressBarFormatter
             return;
         }
 
-        // this algorithm estimates a total progress by accumulating the status of several nested work trackers
-        $progress = 0;
         $title = null;
         while ($parent = $workTracker->getParent()) {
-
-            if ($workTracker instanceof BoundWorkTracker) {
-                $progress /= $workTracker->getMax();
-                $progress += $workTracker->getPingCount() / $workTracker->getMax();
-            } else {
-                $progress = 0;
-            }
 
             if($workTracker->getDepth() == 1) {
                 $title = $workTracker->getTitle();
@@ -104,7 +95,7 @@ class GlobalProgressBarFormatter extends ProgressBarFormatter
             $workTracker = $parent;
         }
 
-        $progress = $this->previousFullProgress + ($progress * $this->getWeightForTitle($title));
+        $progress = $this->previousFullProgress + ($workTracker->estimateProgress() * $this->getWeightForTitle($title));
         $this->setProgress($progress);
     }
 
@@ -113,7 +104,9 @@ class GlobalProgressBarFormatter extends ProgressBarFormatter
         if(isset($this->operationHeuristics['weights'][$title])) {
             return $this->operationHeuristics['weights'][$title] / 100;
         } else {
+            $this->progressBar->clearToStart();
             $this->output->writeln("Invalid step name " . $title);
+            $this->progressBar->displayFromStart();
             return 0.01; // 1%
         }
     }

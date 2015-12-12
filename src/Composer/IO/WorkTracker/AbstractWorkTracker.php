@@ -144,4 +144,25 @@ abstract class AbstractWorkTracker implements WorkTrackerInterface
     public function getFormatter() {
         return $this->formatter;
     }
+
+    /**
+     * Estimates a total progress by accumulating the status of several nested work trackers
+     *
+     * @return float
+     */
+    public function estimateProgress() {
+        $progress = 0;
+        $workTracker = $this;
+        while ($parent = $workTracker->getParent()) {
+            if ($workTracker instanceof BoundWorkTracker) {
+                $progress /= $workTracker->getMax();
+                $progress += $workTracker->getPingCount() / $workTracker->getMax();
+            } else {
+                $progress = 0;
+            }
+
+            $workTracker = $parent;
+        }
+        return $progress;
+    }
 }

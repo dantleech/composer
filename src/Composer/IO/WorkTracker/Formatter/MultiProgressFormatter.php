@@ -55,22 +55,15 @@ class MultiProgressFormatter implements FormatterInterface
             return;
         }
         $out = array();
-        $progress = 0;
         while ($parent = $workTracker->getParent()) {
-
             if ($workTracker instanceof \Composer\IO\WorkTracker\BoundWorkTracker) {
-                $progress /= $workTracker->getMax();
-                $progress += $workTracker->getPingCount() / $workTracker->getMax();
                 $out[] = sprintf('[%d/%d] %s', $workTracker->getPingCount(), $workTracker->getMax(), $workTracker->getTitle());
             } else {
-                $progress = 0;
                 $out[] = sprintf('[%d/-] %s', $workTracker->getPingCount(), $workTracker->getTitle());
             }
 
             $workTracker = $parent;
         }
-
-        $out[] = round($progress * 100) . '% done';
         $out = array_reverse($out);
 
         $this->overwrite($out);

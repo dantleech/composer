@@ -53,7 +53,6 @@ class UpdateCommand extends Command
                 new InputOption('with-dependencies', null, InputOption::VALUE_NONE, 'Add also all dependencies of whitelisted packages to the whitelist.'),
                 new InputOption('verbose', 'v|vv|vvv', InputOption::VALUE_NONE, 'Shows more details including new commits pulled in when updating packages.'),
                 new InputOption('optimize-autoloader', 'o', InputOption::VALUE_NONE, 'Optimize autoloader during autoloader dump.'),
-                new InputOption('pretty', null, InputOption::VALUE_REQUIRED, 'Format for progress, values <info>multi</info>, <info>debug</info>, <info>progress-bar</info>, <info>global-progress-bar</info>', 'empty'),
                 new InputOption('classmap-authoritative', 'a', InputOption::VALUE_NONE, 'Autoload classes from the classmap only. Implicitly enables `--optimize-autoloader`.'),
                 new InputOption('ignore-platform-reqs', null, InputOption::VALUE_NONE, 'Ignore platform requirements (php & ext- packages).'),
                 new InputOption('prefer-stable', null, InputOption::VALUE_NONE, 'Prefer stable versions of dependencies.'),
@@ -83,8 +82,6 @@ EOT
     protected function execute(InputInterface $input, OutputInterface $output)
     {
         $io = $this->getIO();
-
-        $io->setWorkTracker(new UnboundWorkTracker('Composer Update', $this->getWorkTrackerFormatter($input, $output, static::getWorkTrackerHeuristics())));
 
         if ($input->getOption('no-custom-installers')) {
             $io->writeError('<warning>You are using the deprecated option "no-custom-installers". Use "no-plugins" instead.</warning>');
@@ -160,12 +157,11 @@ EOT
             'weights' => array(
                 'Running scripts for `command`' => 1,
                 'Running scripts for `pre-update-cmd`' => 1,
-                'Running scripts for `pre-install-cmd`' => 1,
                 'Running scripts for `pre-dependencies-solving`' => 1,
                 'Running scripts for `post-dependencies-solving`' => 1,
                 'Removing unstable packages from the local repository (if they don\'t match the current stablitity settings)' => 1,
                 'Generating autoload files' => 5,
-                'Running scripts for `post-install-cmd`' => 5,
+                'Running scripts for `post-update-cmd`' => 5,
                 'Consolidating changes' => 5,
 
                 'Loading composer repositories with package information' => 10,

@@ -33,14 +33,18 @@ class ProgressBarFormatter extends DebouncedFormatter implements FormatterInterf
      */
     protected $hasTaskToDisplay = false;
 
+    protected $outputLog;
+
     /**
      * @param OutputInterface $output
+     * @param bool            $outputLog
      */
-    public function __construct(OutputInterface $output)
+    public function __construct(OutputInterface $output, $outputLog = true)
     {
         parent::__construct();
 
         $this->output = $output;
+        $this->outputLog = $outputLog;
         $this->hasTaskToDisplay = false;
         ProgressBar::setPlaceholderFormatterDefinition('dpercent', function(ProgressBar $bar) {
             return round($bar->getProgressPercent() * 100, 1);
@@ -54,7 +58,7 @@ class ProgressBarFormatter extends DebouncedFormatter implements FormatterInterf
         if($return !== 0) {
             $this->columns = 40;
         }
-        $this->progressBar->setFormat(str_repeat("─", $this->columns) . "\n[%bar%]%percent:3s%%\n<fg=cyan>%mainMessage%</>: %message%");
+        $this->progressBar->setFormat(($outputLog ? str_repeat("─", $this->columns) . "\n" : '') . "[%bar%]%percent:3s%%\n<fg=cyan>%mainMessage%</>: %message%");
     }
 
     /**
@@ -109,21 +113,7 @@ class ProgressBarFormatter extends DebouncedFormatter implements FormatterInterf
             return;
         }
 
-        // this algorithm estimates a total progress by accumulating the status of several nested work trackers
-        $progress = 0;
-        while ($parent = $workTracker->getParent()) {
-
-            if ($workTracker instanceof BoundWorkTracker) {
-                $progress /= $workTracker->getMax();
-                $progress += $workTracker->getPingCount() / $workTracker->getMax();
-            } else {
-                $progress = 0;
-            }
-
-            $workTracker = $parent;
-        }
-
-        $this->setProgress($progress);
+        $this->setProgress($workTracker->estimateProgress());
     }
 
     protected function setProgress($decimal) {
@@ -135,9 +125,14 @@ class ProgressBarFormatter extends DebouncedFormatter implements FormatterInterf
      */
     public function beforeWrite()
     {
-        // clears the progress bar
-        if($this->progressBar->isVisible()) {
-            $this->progressBar->clearToStart();
+        if($this->outputLog) {
+            // clears the progress bar
+            if($this->progressBar->isVisible()) {
+                $this->progressBar->clearToStart();
+            }
+            return true;
+        } else {
+            return false;
         }
     }
 
@@ -146,9 +141,11 @@ class ProgressBarFormatter extends DebouncedFormatter implements FormatterInterf
      */
     public function afterWrite()
     {
-        // only redraw the progress bar if we need to
-        if($this->hasTaskToDisplay) {
-            $this->progressBar->displayFromStart();
+        if($this->outputLog) {
+            // only redraw the progress bar if we need to
+            if($this->hasTaskToDisplay && !$this->progressBar->isVisible()) {
+                $this->progressBar->displayFromStart();
+            }
         }
     }
 

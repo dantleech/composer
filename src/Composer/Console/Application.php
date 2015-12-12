@@ -12,8 +12,16 @@
 
 namespace Composer\Console;
 
+use Composer\IO\WorkTracker\Formatter\DebugFormatter;
 use Composer\IO\WorkTracker\Formatter\EmptyFormatter;
+use Composer\IO\WorkTracker\Formatter\GlobalProgressBarFormatter;
+use Composer\IO\WorkTracker\Formatter\MultiProgressFormatter;
+use Composer\IO\WorkTracker\Formatter\NotifyFormatterConsoleOutput;
+use Composer\IO\WorkTracker\Formatter\NotifyFormatterOutput;
+use Composer\IO\WorkTracker\Formatter\ProgressBarFormatter;
 use Composer\IO\WorkTracker\UnboundWorkTracker;
+use Composer\IO\WorkTracker\WorkTrackerInterface;
+use InvalidArgumentException;
 use Symfony\Component\Console\Application as BaseApplication;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -47,6 +55,11 @@ class Application extends BaseApplication
      * @var IOInterface
      */
     protected $io;
+
+    /**
+     * @var WorkTrackerInterface
+     */
+    protected $workTracker = null;
 
     private static $logo = '   ______
   / ____/___  ____ ___  ____  ____  ________  _____
@@ -89,13 +102,15 @@ class Application extends BaseApplication
     /**
      * {@inheritDoc}
      */
-    public function run(InputInterface $input = null, OutputInterface $output = null)
+    public function run(InputInterface $input = null, OutputInterface $output = null, WorkTrackerInterface $workTracker = null)
     {
         if (null === $output) {
             $styles = Factory::createAdditionalStyles();
             $formatter = new OutputFormatter(null, $styles);
             $output = new ConsoleOutput(ConsoleOutput::VERBOSITY_NORMAL, null, $formatter);
         }
+
+        $this->workTracker = $workTracker;
 
         return parent::run($input, $output);
     }
@@ -105,7 +120,15 @@ class Application extends BaseApplication
      */
     public function doRun(InputInterface $input, OutputInterface $output)
     {
-        $this->io = new ConsoleIO($input, $output, $this->getHelperSet(), new UnboundWorkTracker('Composer', new EmptyFormatter($output)));
+        if($input->hasParameterOption('--pretty')) {
+            $workTracker = new UnboundWorkTracker('Composer', $this->getWorkTrackerFormatter($input, $output));
+        } else if($this->workTracker != null) {
+            $workTracker = $this->workTracker;
+        } else {
+            $workTracker = new UnboundWorkTracker('Composer', new EmptyFormatter($output));
+        }
+
+        $this->io = new ConsoleIO($input, $output, $this->getHelperSet(), $workTracker);
         ErrorHandler::register($this->io);
         $io = $this->getIO();
 
@@ -341,9 +364,58 @@ class Application extends BaseApplication
     protected function getDefaultInputDefinition()
     {
         $definition = parent::getDefaultInputDefinition();
+        $definition->addOption(new InputOption('--pretty', null, InputOption::VALUE_REQUIRED, 'Format for progress, values <info>multi</info>, <info>debug</info>, <info>progress-bar</info>, <info>global-progress-bar</info>, <info>global-progress-bar-no-log</info>', 'empty'));
         $definition->addOption(new InputOption('--profile', null, InputOption::VALUE_NONE, 'Display timing and memory usage information'));
         $definition->addOption(new InputOption('--working-dir', '-d', InputOption::VALUE_REQUIRED, 'If specified, use the given directory as working directory.'));
 
         return $definition;
+    }
+
+    /**
+     * Returns a work tracker formatter based upon the `--pretty` option.
+     *
+     * @param \Symfony\Component\Console\Input\InputInterface   $input
+     * @param \Symfony\Component\Console\Output\OutputInterface $output
+     * @return \Composer\IO\WorkTracker\FormatterInterface
+     */
+    public function getWorkTrackerFormatter(InputInterface $input, OutputInterface &$output)
+    {
+        $pretty = $input->getParameterOption('--pretty');
+        if ($pretty == 'debug') {
+            return new DebugFormatter($output);
+        } else if($pretty == 'multi') {
+            return new MultiProgressFormatter($output);
+        } else if($pretty == 'progress-bar') {
+            $formatter = new ProgressBarFormatter($output);
+            if($output instanceof ConsoleOutputInterface) {
+                $output = new NotifyFormatterConsoleOutput($output, $formatter);
+            } else {
+                $output = new NotifyFormatterOutput($output, $formatter);
+            }
+            return $formatter;
+        } else if($pretty == 'global-progress-bar' || $pretty == 'global-progress-bar-no-log') {
+            $name = str_replace(' ', '', ucwords(str_replace(array('-', '_'), ' ', $input->getFirstArgument())));
+            $name = 'Composer\Command\\' . $name . 'Command';
+            if(method_exists($name, 'getWorkTrackerHeuristics')) {
+                $heuristics = $name::getWorkTrackerHeuristics();
+            } else {
+                $heuristics = [];
+            }
+            if($pretty == 'global-progress-bar-no-log') {
+                $formatter = new GlobalProgressBarFormatter($output, $heuristics, false);
+            } else {
+                $formatter = new GlobalProgressBarFormatter($output, $heuristics);
+            }
+            if($output instanceof ConsoleOutputInterface) {
+                $output = new NotifyFormatterConsoleOutput($output, $formatter);
+            } else {
+                $output = new NotifyFormatterOutput($output, $formatter);
+            }
+            return $formatter;
+        } else if($pretty == 'empty') {
+            return new EmptyFormatter($output);
+        } else {
+            throw new InvalidArgumentException('Invalid option: `--pretty=' . $pretty . '`');
+        }
     }
 }
