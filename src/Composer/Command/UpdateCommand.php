@@ -13,8 +13,10 @@
 namespace Composer\Command;
 
 use Composer\Installer;
+use Composer\IO\WorkTracker\AbstractWorkTracker;
 use Composer\IO\WorkTracker\ContextWorkTracker;
 use Composer\IO\WorkTracker\Formatter\DebugFormatter;
+use Composer\IO\WorkTracker\Formatter\EmptyFormatter;
 use Composer\IO\WorkTracker\Formatter\MultiProgressFormatter;
 use Composer\IO\WorkTracker\UnboundWorkTracker;
 use Composer\Plugin\CommandEvent;
@@ -82,7 +84,7 @@ EOT
     {
         $io = $this->getIO();
 
-        $io->setWorkTracker(new UnboundWorkTracker('Composer Update', $this->getWorkTrackerFormatter($input, $output)));
+        $io->setWorkTracker(new UnboundWorkTracker('Composer Update', $this->getWorkTrackerFormatter($input, $output, static::getWorkTrackerHeuristics())));
 
         if ($input->getOption('no-custom-installers')) {
             $io->writeError('<warning>You are using the deprecated option "no-custom-installers". Use "no-plugins" instead.</warning>');
@@ -150,4 +152,30 @@ EOT
 
         return $install->run();
     }
+
+    public static function getWorkTrackerHeuristics() {
+        // these are all just estimations and may be adjusted
+        // there is quite possibly missing steps
+        return array(
+            'weights' => array(
+                'Running scripts for `command`' => 1,
+                'Running scripts for `pre-update-cmd`' => 1,
+                'Running scripts for `pre-install-cmd`' => 1,
+                'Running scripts for `pre-dependencies-solving`' => 1,
+                'Running scripts for `post-dependencies-solving`' => 1,
+                'Removing unstable packages from the local repository (if they don\'t match the current stablitity settings)' => 1,
+                'Generating autoload files' => 5,
+                'Running scripts for `post-install-cmd`' => 5,
+                'Consolidating changes' => 5,
+
+                'Loading composer repositories with package information' => 10,
+                'Processing dev packages' => 5,
+                'Updating dependencies (including require-dev)' => 5,
+                'Updating dependencies' => 5,
+                'Solving dependencies' => 20,
+                'Installing' => 35 // 1 + 1 + 10 + 1 + 5 + 5 + 1 + 20 + 1 + 5 + x + 5 + 5 + 5 = 100, x = 35
+            )
+        );
+    }
+
 }

@@ -13,6 +13,7 @@
 namespace Composer\Command;
 
 use Composer\Installer;
+use Composer\IO\WorkTracker\Formatter\EmptyFormatter;
 use Composer\Plugin\CommandEvent;
 use Composer\Plugin\PluginEvents;
 use Symfony\Component\Console\Input\InputInterface;
@@ -73,7 +74,7 @@ EOT
     {
         $io = $this->getIO();
 
-        $io->setWorkTracker(new UnboundWorkTracker('Composer Install', $this->getWorkTrackerFormatter($input, $output)));
+        $io->setWorkTracker(new UnboundWorkTracker('Composer Install', $this->getWorkTrackerFormatter($input, $output, static::getWorkTrackerHeuristics())));
 
         if ($args = $input->getArgument('packages')) {
             $io->writeError('<error>Invalid argument '.implode(' ', $args).'. Use "composer require '.implode(' ', $args).'" instead to add packages to your composer.json.</error>');
@@ -141,5 +142,30 @@ EOT
         }
 
         return $install->run();
+    }
+
+    public static function getWorkTrackerHeuristics() {
+        // these are all just estimations and may be adjusted
+        // there is quite possibly missing steps
+        return array(
+            'weights' => array(
+                'Running scripts for `command`' => 1,
+                'Running scripts for `pre-update-cmd`' => 1,
+                'Running scripts for `pre-install-cmd`' => 1,
+                'Running scripts for `pre-dependencies-solving`' => 1,
+                'Running scripts for `post-dependencies-solving`' => 1,
+                'Removing unstable packages from the local repository (if they don\'t match the current stablitity settings)' => 1,
+                'Generating autoload files' => 5,
+                'Running scripts for `post-install-cmd`' => 5,
+                'Consolidating changes' => 5,
+
+                'Loading composer repositories with package information' => 1,
+                'Installing dependencies (including require-dev) from lock file' => 1,
+                'Installing dependencies from lock file' => 1,
+                'Solving dependencies' => 10,
+                'Processing dev packages' => 2,
+                'Installing' => 70
+            )
+        );
     }
 }
