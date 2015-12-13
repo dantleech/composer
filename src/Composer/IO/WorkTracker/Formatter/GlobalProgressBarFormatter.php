@@ -68,7 +68,7 @@ class GlobalProgressBarFormatter extends ProgressBarFormatter
             $this->previousFullProgress += $this->getWeightForTitle($workTracker->getTitle());
             $this->setProgress($this->previousFullProgress);
         } else if($workTracker->getDepth() == 2) {
-            //$this->progressBar->setMessage(static::$noMessage);
+            $this->progressBar->setMessage(static::$noMessage);
         } else {
             $this->progressBar->setMessage($workTracker->getParent()->getTitle());
         }
@@ -85,18 +85,22 @@ class GlobalProgressBarFormatter extends ProgressBarFormatter
             return;
         }
 
+        $title = $this->getDepthOneTitle($workTracker);
+
+        $progress = $this->previousFullProgress + ($workTracker->estimateProgress() * $this->getWeightForTitle($title));
+        $this->setProgress($progress);
+    }
+
+    private function getDepthOneTitle($workTracker) {
         $title = null;
         while ($parent = $workTracker->getParent()) {
-
-            if($workTracker->getDepth() == 1) {
+            if($workTracker->getDepth() === 1) {
                 $title = $workTracker->getTitle();
             }
 
             $workTracker = $parent;
         }
-
-        $progress = $this->previousFullProgress + ($workTracker->estimateProgress() * $this->getWeightForTitle($title));
-        $this->setProgress($progress);
+        return $title;
     }
 
     private function getWeightForTitle($title) {

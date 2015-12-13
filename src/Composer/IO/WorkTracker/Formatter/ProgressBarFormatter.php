@@ -47,18 +47,17 @@ class ProgressBarFormatter extends DebouncedFormatter implements FormatterInterf
         $this->outputLog = $outputLog;
         $this->hasTaskToDisplay = false;
         ProgressBar::setPlaceholderFormatterDefinition('dpercent', function(ProgressBar $bar) {
-            return round($bar->getProgressPercent() * 100, 1);
+            return sprintf("%.1f", $bar->getProgressPercent() * 100);
         });
         $this->progressBar = new ProgressBar($output);
         $this->progressBar->setBarCharacter('<fg=green>█</>');
         $this->progressBar->setProgressCharacter('<fg=green>█</>');
         $this->progressBar->setEmptyBarCharacter('░');
 
-        $this->columns = exec('tput cols', $out, $return);
-        if($return !== 0) {
-            $this->columns = 40;
-        }
-        $this->progressBar->setFormat(($outputLog ? str_repeat("─", $this->columns) . "\n" : '') . "[%bar%]%percent:3s%%\n<fg=cyan>%mainMessage%</>: %message%");
+        $columns = exec('tput cols', $out, $return);
+        $this->columns = $return !== 0 ? 40 : $columns;
+        $this->progressBar->setLineLength($return === 0 ? $columns : 0);
+        $this->progressBar->setFormat(($outputLog ? str_repeat("─", $this->columns) . "\n" : '') . "[%bar%]%dpercent:6s%%\n<fg=cyan>%mainMessage%</>: %message%");
     }
 
     /**
@@ -95,7 +94,7 @@ class ProgressBarFormatter extends DebouncedFormatter implements FormatterInterf
         if($workTracker->getDepth() === 1) {
             $this->progressBar->clearToStart();
             $this->hasTaskToDisplay = false;
-        } elseif($workTracker->getDepth() === 2) {
+        } else if($workTracker->getDepth() === 2) {
             $this->progressBar->setMessage(static::$noMessage);
             $this->progressBar->display();
         } else {

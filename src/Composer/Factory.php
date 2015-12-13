@@ -116,20 +116,32 @@ class Factory
         // load global config
         $file = new JsonFile($config->get('home').'/config.json');
         if ($file->exists()) {
-            if ($io && $io->isDebug()) {
-                $io->writeError('Loading config file ' . $file->getPath());
+            if($io) {
+                if($io->isDebug()) {
+                    $io->writeError('Loading config file ' . $file->getPath());
+                }
+                $io->getWorkTracker()->createUnbound('Loading config file ' . $file->getPath());
             }
             $config->merge($file->read());
+            if($io) {
+                $io->getWorkTracker()->complete();
+            }
         }
         $config->setConfigSource(new JsonConfigSource($file));
 
         // load global auth file
         $file = new JsonFile($config->get('home').'/auth.json');
         if ($file->exists()) {
-            if ($io && $io->isDebug()) {
-                $io->writeError('Loading config file ' . $file->getPath());
+            if($io) {
+                if($io->isDebug()) {
+                    $io->writeError('Loading config file ' . $file->getPath());
+                }
+                $io->getWorkTracker()->createUnbound('Loading config file ' . $file->getPath());
             }
             $config->merge(array('config' => $file->read()));
+            if($io) {
+                $io->getWorkTracker()->complete();
+            }
         }
         $config->setAuthConfigSource(new JsonConfigSource($file, true));
 
@@ -200,6 +212,8 @@ class Factory
     {
         $cwd = $cwd ?: getcwd();
 
+        $io->getWorkTracker()->createUnbound('Loading Composer');
+
         // load Composer configuration
         if (null === $localConfig) {
             $localConfig = static::getComposerFile();
@@ -240,11 +254,17 @@ class Factory
             }
             $localAuthFile = new JsonFile(dirname(realpath($composerFile)) . '/auth.json');
             if ($localAuthFile->exists()) {
-                if ($io && $io->isDebug()) {
-                    $io->writeError('Loading config file ' . $localAuthFile->getPath());
+                if ($io) {
+                    if($io->isDebug()) {
+                        $io->writeError('Loading config file ' . $localAuthFile->getPath());
+                    }
+                    $io->getWorkTracker()->createUnbound('Loading config file ' . $localAuthFile->getPath());
                 }
                 $config->merge(array('config' => $localAuthFile->read()));
                 $config->setAuthConfigSource(new JsonConfigSource($localAuthFile, true));
+                if($io) {
+                    $io->getWorkTracker()->complete();
+                }
             }
         }
 
@@ -302,6 +322,9 @@ class Factory
         $this->createDefaultInstallers($im, $composer, $io);
 
         if ($fullLoad) {
+            if($io) {
+                $io->getWorkTracker()->createUnbound('Loading plugins');
+            }
             $globalComposer = $this->createGlobalComposer($io, $config, $disablePlugins);
             $pm = $this->createPluginManager($io, $composer, $globalComposer, $disablePlugins);
             $composer->setPluginManager($pm);
@@ -313,6 +336,10 @@ class Factory
             if ($rm->getLocalRepository()) {
                 $this->purgePackages($rm->getLocalRepository(), $im);
             }
+
+            if($io) {
+                $io->getWorkTracker()->complete();
+            }
         }
 
         // init locker if possible
@@ -323,6 +350,8 @@ class Factory
             $locker = new Package\Locker($io, new JsonFile($lockFile, new RemoteFilesystem($io, $config)), $rm, $im, file_get_contents($composerFile));
             $composer->setLocker($locker);
         }
+
+        $io->getWorkTracker()->complete();
 
         return $composer;
     }

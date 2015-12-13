@@ -155,6 +155,7 @@ EOT
         // there is quite possibly missing steps
         return array(
             'weights' => array(
+                'Loading Composer' => 2,
                 'Running scripts for `command`' => 1,
                 'Running scripts for `pre-update-cmd`' => 1,
                 'Running scripts for `pre-dependencies-solving`' => 1,
@@ -169,7 +170,7 @@ EOT
                 'Updating dependencies (including require-dev)' => 5,
                 'Updating dependencies' => 5,
                 'Solving dependencies' => 20,
-                'Installing' => 35 // 1 + 1 + 10 + 1 + 5 + 5 + 1 + 20 + 1 + 5 + x + 5 + 5 + 5 = 100, x = 35
+                'Installing' => 33 // 2 + 1 + 1 + 10 + 1 + 5 + 5 + 1 + 20 + 1 + 5 + x + 5 + 5 + 5 = 100, x = 33
             )
         );
     }

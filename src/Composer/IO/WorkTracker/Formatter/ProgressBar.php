@@ -32,6 +32,7 @@ class ProgressBar {
     private $internalFormat;
     private $redrawFreq = 1;
 
+
     /**
      * @var OutputInterface
      */
@@ -46,6 +47,8 @@ class ProgressBar {
     private $messages;
     private $overwrite = true;
     private $visible = false;
+    private $approxLineLength = 0;
+    private $previousLineWraps = 0;
 
     private static $formatters;
     private static $formats;
@@ -530,6 +533,22 @@ class ProgressBar {
     }
 
     /**
+     * @return mixed
+     */
+    public function getLineLength()
+    {
+        return $this->approxLineLength;
+    }
+
+    /**
+     * @param mixed $approxLineLength
+     */
+    public function setLineLength($approxLineLength)
+    {
+        $this->approxLineLength = $approxLineLength;
+    }
+
+    /**
      * Overwrites a previous message to the output.
      *
      * @param string $message The message
@@ -540,6 +559,15 @@ class ProgressBar {
             $this->setRealFormat($this->internalFormat ?: $this->determineBestFormat());
         }
 
+        $numWraps = 0;
+        if($this->approxLineLength) {
+            $lines = explode("\n", $message);
+            foreach($lines as $line) {
+                $length = Helper::strlenWithoutDecoration($this->output->getFormatter(), $line);
+                $numWraps += (int) (($length - 1) / $this->approxLineLength); // get the number of times it will wrap
+            }
+        }
+
         $replace = '';
 
         if ($this->overwrite) {
@@ -547,11 +575,13 @@ class ProgressBar {
             $replace .= "\x0D\033[2K";
 
             if ($this->formatLineCount) {
-                $replace .= str_repeat("\033[1A\033[2K", $this->formatLineCount);
+                $replace .= str_repeat("\033[1A\033[2K", $this->formatLineCount + $this->previousLineWraps);
             }
         } else {
             $replace .= "\n";
         }
+
+        $this->previousLineWraps = $numWraps;
 
         $this->output->write($replace . $message);
     }

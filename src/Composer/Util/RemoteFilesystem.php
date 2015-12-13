@@ -149,6 +149,7 @@ class RemoteFilesystem
 
         if ($this->io->isDebug()) {
             $this->io->writeError((substr($fileUrl, 0, 4) === 'http' ? 'Downloading ' : 'Reading ') . $fileUrl);
+            $this->io->getWorkTracker()->createUnbound((substr($fileUrl, 0, 4) === 'http' ? 'Downloading ' : 'Reading ') . $fileUrl);
         }
 
         if (isset($options['github-token'])) {
@@ -172,9 +173,9 @@ class RemoteFilesystem
 
         $ctx = StreamContextFactory::getContext($fileUrl, $options, array('notification' => array($this, 'callbackGet')));
 
-        if ($this->progress) {
-            //$this->io->writeError("    Downloading: <comment>Connecting...</comment>", false);
-        }
+        /*if ($this->progress) {
+            $this->io->writeError("    Downloading: <comment>Connecting...</comment>", false);
+        }*/
 
         $errorMessage = '';
         $errorCode = 0;
@@ -300,6 +301,9 @@ class RemoteFilesystem
             $authHelper->storeAuth($this->originUrl, $this->storeAuth);
             $this->storeAuth = false;
 
+            if($this->io->isDebug()) {
+                $this->io->getWorkTracker()->complete();
+            }
             return $result;
         }
 
@@ -326,6 +330,9 @@ class RemoteFilesystem
             $this->lastHeaders = $http_response_header;
         }
 
+        if($this->io->isDebug()) {
+            $this->io->getWorkTracker()->complete();
+        }
         return $result;
     }
 

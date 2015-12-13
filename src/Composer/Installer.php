@@ -438,7 +438,7 @@ class Installer
         );
 
         $this->io->writeError('<info>Loading composer repositories with package information</info>');
-        $workTracker->createBound('Loading composer repositories with package information', $installFromLock ? 0 : 1);
+        $workTracker->createBound('Loading composer repositories with package information', $installFromLock ? 1 : 2);
 
         // creating repository pool
         $policy = $this->createPolicy();
@@ -460,6 +460,7 @@ class Installer
         if ($lockedRepository) {
             $pool->addRepository($lockedRepository, $aliases);
         }
+        $workTracker->ping();
 
         $workTracker->complete();
 

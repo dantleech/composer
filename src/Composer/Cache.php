@@ -66,11 +66,14 @@ class Cache
     {
         $file = preg_replace('{[^'.$this->whitelist.']}i', '-', $file);
         if ($this->enabled && file_exists($this->root . $file)) {
+            $this->io->getWorkTracker()->createUnbound('Reading ' . $file . ' from cache');
             if ($this->io->isDebug()) {
                 $this->io->writeError('Reading '.$this->root . $file.' from cache');
             }
 
-            return file_get_contents($this->root . $file);
+            $result = file_get_contents($this->root . $file);
+            $this->io->getWorkTracker()->complete();
+            return $result;
         }
 
         return false;

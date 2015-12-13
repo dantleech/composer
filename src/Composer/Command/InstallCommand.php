@@ -146,6 +146,7 @@ EOT
         // there is quite possibly missing steps
         return array(
             'weights' => array(
+                'Loading Composer' => 2,
                 'Running scripts for `command`' => 1,
                 'Running scripts for `pre-update-cmd`' => 1,
                 'Running scripts for `pre-install-cmd`' => 1,
@@ -161,7 +162,7 @@ EOT
                 'Installing dependencies from lock file' => 1,
                 'Solving dependencies' => 10,
                 'Processing dev packages' => 2,
-                'Installing' => 70
+                'Installing' => 68
             )
         );
     }
