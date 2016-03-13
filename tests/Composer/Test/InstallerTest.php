@@ -52,7 +52,7 @@ class InstallerTest extends TestCase
     public function testInstaller(RootPackageInterface $rootPackage, $repositories, array $options)
     {
         $io = $this->getMock('Composer\IO\IOInterface');
-        $io->expects($this->any())->method('getWorkTracker')->willReturn($this->getMock('Composer\IO\WorkTracker\WorkTrackerInterface'));
+        $io->expects($this->any())->method('getWorkTracker')->willReturn($this->createWorkTrackerInstance());
 
         $downloadManager = $this->getMock('Composer\Downloader\DownloadManager', array(), array($io));
         $config = $this->getMock('Composer\Config');
@@ -150,7 +150,7 @@ class InstallerTest extends TestCase
             }
         }
 
-        $io = new BufferIO('', OutputInterface::VERBOSITY_NORMAL, new OutputFormatter(false));
+        $io = new BufferIO('', OutputInterface::VERBOSITY_NORMAL, new OutputFormatter(false), $this->createWorkTrackerInstance());
 
         // Prepare for exceptions
         if (!is_int($expectResult)) {
@@ -199,12 +199,6 @@ class InstallerTest extends TestCase
         $autoloadGenerator = $this->getMock('Composer\Autoload\AutoloadGenerator', array(), array($eventDispatcher));
         $composer->setAutoloadGenerator($autoloadGenerator);
         $composer->setEventDispatcher($eventDispatcher);
-
-        $symfonyOutput = $this->getMock('Symfony\Component\Console\Output\OutputInterface');
-        $symfonyOutput->expects($this->any())
-           ->method('write')
-           ->will($this->returnCallback($callback));
-        $io->expects($this->any())->method('getWorkTracker')->willReturn($this->getMock('Composer\IO\WorkTracker\WorkTrackerInterface'));
 
         $installer = Installer::create($io, $composer);
 
@@ -389,5 +383,15 @@ class InstallerTest extends TestCase
         }
 
         return $data;
+    }
+
+    private function createWorkTrackerInstance()
+    {
+        $wt = $this->getMock('Composer\IO\WorkTracker\WorkTrackerInterface');
+        $wt->method('createBound')->willReturn($wt);
+        $wt->method('createUnbound')->willReturn($wt);
+        $wt->method('getParent')->willReturn($wt);
+
+        return $wt;
     }
 }

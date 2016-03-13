@@ -254,8 +254,9 @@ class ConsoleIOTest extends TestCase
             ->method('get')
             ->with($this->equalTo('dialog'))
             ->will($this->returnValue($dialogMock));
+        $workTrackerMock = $this->getMock('Composer\IO\WorkTracker\WorkTrackerInterface');
 
-        $consoleIO = new ConsoleIO($inputMock, $outputMock, $helperMock);
+        $consoleIO = new ConsoleIO($inputMock, $outputMock, $helperMock, $workTrackerMock);
         $consoleIO->select('Select item', array("item1", "item2"), null, false, "Error message", true);
     }
 

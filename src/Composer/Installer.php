@@ -226,7 +226,7 @@ class Installer
         try {
             $res = $this->doInstall($localRepo, $installedRepo, $platformRepo, $aliases, $this->devMode);
             if ($res !== 0) {
-                $workTracker->complete();
+                $this->io->getWorkTracker()->complete();
                 return $res;
             }
         } catch (\Exception $e) {
@@ -268,7 +268,7 @@ class Installer
         if (!$this->dryRun) {
             // write lock
             if ($this->update || !$this->locker->isLocked()) {
-                $workTracker->createBound('Consolidating changes', $this->devMode && $this->package->getDevRequires() ? 2 : 1);
+                $this->io->getWorkTracker()->createBound('Consolidating changes', $this->devMode && $this->package->getDevRequires() ? 2 : 1);
 
                 $localRepo->reload();
 
@@ -290,7 +290,7 @@ class Installer
                     }
 
                     $this->eventDispatcher->dispatchInstallerEvent(InstallerEvents::PRE_DEPENDENCIES_SOLVING, false, $policy, $pool, $installedRepo, $request);
-                    $solver = new Solver($policy, $pool, $installedRepo, $workTracker);
+                    $solver = new Solver($policy, $pool, $installedRepo, $this->io->getWorkTracker());
                     $ops = $solver->solve($request, $this->ignorePlatformReqs);
                     $this->eventDispatcher->dispatchInstallerEvent(InstallerEvents::POST_DEPENDENCIES_SOLVING, false, $policy, $pool, $installedRepo, $request, $ops);
 
@@ -300,7 +300,7 @@ class Installer
                         }
                     }
 
-                    $workTracker->ping();
+                    $this->io->getWorkTracker()->ping();
                 }
 
                 $platformReqs = $this->extractPlatformRequirements($this->package->getRequires());
@@ -319,24 +319,24 @@ class Installer
                     $this->preferLowest,
                     $this->config->get('platform') ?: array()
                 );
-                $workTracker->complete();
-                $workTracker->ping();
+                $this->io->getWorkTracker()->complete();
+                $this->io->getWorkTracker()->ping();
 
                 if ($updatedLock) {
                     $this->io->writeError('<info>Writing lock file</info>');
                 }
 
-                $workTracker->complete();
+                $this->io->getWorkTracker()->complete();
             }
 
             if ($this->dumpAutoloader) {
                 // write autoloader
                 if ($this->optimizeAutoloader) {
                     $this->io->writeError('<info>Generating optimized autoload files</info>');
-                    $workTracker->createUnbound('Generating optimized autoload files');
+                    $this->io->getWorkTracker()->createUnbound('Generating optimized autoload files');
                 } else {
                     $this->io->writeError('<info>Generating autoload files</info>');
-                    $workTracker->createUnbound('Generating autoload files');
+                    $this->io->getWorkTracker()->createUnbound('Generating autoload files');
                 }
 
                 $this->autoloadGenerator->setDevMode($this->devMode);
@@ -344,7 +344,7 @@ class Installer
                 $this->autoloadGenerator->setRunScripts($this->runScripts);
                 $this->autoloadGenerator->dump($this->config, $localRepo, $this->package, $this->installationManager, 'composer', $this->optimizeAutoloader);
 
-                $workTracker->complete();
+                $this->io->getWorkTracker()->complete();
             }
 
             if ($this->runScripts) {
@@ -361,14 +361,12 @@ class Installer
             }
         }
 
-<<<<<<< HEAD
-        $workTracker->complete();
-=======
+        $this->io->getWorkTracker()->complete();
+
         // re-enable GC except on HHVM which triggers a warning here
         if (!defined('HHVM_VERSION')) {
             gc_enable();
         }
->>>>>>> upstream/master
 
         return 0;
     }
@@ -516,11 +514,7 @@ class Installer
         } elseif ($installFromLock) {
 
             if (!$this->locker->isFresh()) {
-<<<<<<< HEAD
-                $workTracker->log('<warning>Warning: The lock file is not up to date with the latest changes in composer.json. You may be getting outdated dependencies. Run update to update them.</warning>');
-=======
                 $this->io->writeError('<warning>Warning: The lock file is not up to date with the latest changes in composer.json. You may be getting outdated dependencies. Run update to update them.</warning>', true, IOInterface::QUIET);
->>>>>>> upstream/master
             }
 
             $packages = $lockedRepository->getPackages();

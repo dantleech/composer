@@ -250,18 +250,14 @@ class RemoteFilesystem
 
         $ctx = StreamContextFactory::getContext($fileUrl, $options, array('notification' => array($this, 'callbackGet')));
 
-<<<<<<< HEAD
-        /*if ($this->progress) {
-=======
         $actualContextOptions = stream_context_get_options($ctx);
         $usingProxy = !empty($actualContextOptions['http']['proxy']) ? ' using proxy ' . $actualContextOptions['http']['proxy'] : '';
         $this->io->writeError((substr($origFileUrl, 0, 4) === 'http' ? 'Downloading ' : 'Reading ') . $origFileUrl . $usingProxy, true, IOInterface::DEBUG);
         unset($origFileUrl, $actualContextOptions);
 
         if ($this->progress && !$isRedirect) {
->>>>>>> upstream/master
             $this->io->writeError("    Downloading: <comment>Connecting...</comment>", false);
-        }*/
+        }
 
         // Check for secure HTTP
         if (
@@ -354,13 +350,8 @@ class RemoteFilesystem
             $result = false;
         }
 
-<<<<<<< HEAD
-        if ($this->progress && !$this->retry) {
-            //$this->io->overwriteError("    Downloading: <comment>100%</comment>");
-=======
         if ($this->progress && !$this->retry && !$isRedirect) {
             $this->io->overwriteError("    Downloading: <comment>100%</comment>");
->>>>>>> upstream/master
         }
 
         // decode gzip

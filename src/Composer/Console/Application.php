@@ -121,7 +121,7 @@ class Application extends BaseApplication
      */
     public function doRun(InputInterface $input, OutputInterface $output)
     {
-        if($input->hasParameterOption('--pretty')) {
+        if($input->hasParameterOption('--progress')) {
             $workTracker = new UnboundWorkTracker('Composer', $this->getWorkTrackerFormatter($input, $output));
         } else if($this->workTracker != null) {
             $workTracker = $this->workTracker;
@@ -366,7 +366,7 @@ class Application extends BaseApplication
     protected function getDefaultInputDefinition()
     {
         $definition = parent::getDefaultInputDefinition();
-        $definition->addOption(new InputOption('--pretty', null, InputOption::VALUE_REQUIRED, 'Format for progress, values <info>multi</info>, <info>debug</info>, <info>progress-bar</info>, <info>global-progress-bar</info>, <info>global-progress-bar-no-log</info>', 'empty'));
+        $definition->addOption(new InputOption('--progress', null, InputOption::VALUE_REQUIRED, 'Format for progress, values <info>multi</info>, <info>debug</info>, <info>progress-bar</info>, <info>global-progress-bar</info>, <info>global-progress-bar-no-log</info>', 'empty'));
         $definition->addOption(new InputOption('--profile', null, InputOption::VALUE_NONE, 'Display timing and memory usage information'));
         $definition->addOption(new InputOption('--working-dir', '-d', InputOption::VALUE_REQUIRED, 'If specified, use the given directory as working directory.'));
 
@@ -382,7 +382,7 @@ class Application extends BaseApplication
      */
     public function getWorkTrackerFormatter(InputInterface $input, OutputInterface &$output)
     {
-        $pretty = $input->getParameterOption('--pretty');
+        $pretty = $input->getParameterOption('--progress');
         if ($pretty == 'debug') {
             return new DebugFormatter($output);
         } else if($pretty == 'multi') {
@@ -417,7 +417,7 @@ class Application extends BaseApplication
         } else if($pretty == 'empty') {
             return new EmptyFormatter($output);
         } else {
-            throw new InvalidArgumentException('Invalid option: `--pretty=' . $pretty . '`');
+            throw new InvalidArgumentException('Invalid option: `--progress=' . $pretty . '`');
         }
     }
 }
