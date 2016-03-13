@@ -16,9 +16,9 @@ use Composer\Package\BasePackage;
 use Composer\Package\PackageInterface;
 use Composer\Package\AliasPackage;
 use Composer\Config;
-use Composer\Factory;
+use Composer\Repository\RepositoryFactory;
 use Composer\Package\Version\VersionGuesser;
-use Composer\Semver\VersionParser;
+use Composer\Package\Version\VersionParser;
 use Composer\Repository\RepositoryManager;
 use Composer\Util\ProcessExecutor;
 
@@ -71,8 +71,11 @@ class RootPackageLoader extends ArrayLoader
             // override with env var if available
             if (getenv('COMPOSER_ROOT_VERSION')) {
                 $version = getenv('COMPOSER_ROOT_VERSION');
+                $commit = null;
             } else {
-                $version = $this->versionGuesser->guessVersion($config, $cwd ?: getcwd());
+                $versionData =  $this->versionGuesser->guessVersion($config, $cwd ?: getcwd());
+                $version = $versionData['version'];
+                $commit = $versionData['commit'];
             }
 
             if (!$version) {
@@ -81,6 +84,18 @@ class RootPackageLoader extends ArrayLoader
             }
 
             $config['version'] = $version;
+            if ($commit) {
+                $config['source'] = array(
+                    'type' => '',
+                    'url' => '',
+                    'reference' => $commit,
+                );
+                $config['dist'] = array(
+                    'type' => '',
+                    'url' => '',
+                    'reference' => $commit,
+                );
+            }
         }
 
         $realPackage = $package = parent::load($config, $class);
@@ -113,6 +128,11 @@ class RootPackageLoader extends ArrayLoader
             }
         }
 
+        if (isset($links[$config['name']])) {
+            throw new \InvalidArgumentException(sprintf('Root package \'%s\' cannot require itself in its composer.json' . PHP_EOL .
+                        'Did you accidentally name your root package after an external package?', $config['name']));
+        }
+
         $realPackage->setAliases($aliases);
         $realPackage->setStabilityFlags($stabilityFlags);
         $realPackage->setReferences($references);
@@ -121,7 +141,7 @@ class RootPackageLoader extends ArrayLoader
             $realPackage->setPreferStable((bool) $config['prefer-stable']);
         }
 
-        $repos = Factory::createDefaultRepositories(null, $this->config, $this->manager);
+        $repos = RepositoryFactory::defaultRepos(null, $this->config, $this->manager);
         foreach ($repos as $repo) {
             $this->manager->addRepository($repo);
         }
@@ -155,10 +175,10 @@ class RootPackageLoader extends ArrayLoader
 
             // extract all sub-constraints in case it is an OR/AND multi-constraint
             $orSplit = preg_split('{\s*\|\|?\s*}', trim($reqVersion));
-            foreach ($orSplit as $constraint) {
-                $andSplit = preg_split('{(?<!^|as|[=>< ,]) *(?<!-)[, ](?!-) *(?!,|as|$)}', $constraint);
-                foreach ($andSplit as $constraint) {
-                    $constraints[] = $constraint;
+            foreach ($orSplit as $orConstraint) {
+                $andSplit = preg_split('{(?<!^|as|[=>< ,]) *(?<!-)[, ](?!-) *(?!,|as|$)}', $orConstraint);
+                foreach ($andSplit as $andConstraint) {
+                    $constraints[] = $andConstraint;
                 }
             }
 

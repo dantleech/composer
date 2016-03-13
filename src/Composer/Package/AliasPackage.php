@@ -13,7 +13,7 @@
 namespace Composer\Package;
 
 use Composer\Semver\Constraint\Constraint;
-use Composer\Semver\VersionParser;
+use Composer\Package\Version\VersionParser;
 
 /**
  * @author Jordi Boggiano <j.boggiano@seld.be>
@@ -23,10 +23,11 @@ class AliasPackage extends BasePackage implements CompletePackageInterface
     protected $version;
     protected $prettyVersion;
     protected $dev;
-    protected $aliasOf;
     protected $rootPackageAlias = false;
     protected $stability;
 
+    /** @var PackageInterface */
+    protected $aliasOf;
     /** @var Link[] */
     protected $requires;
     /** @var Link[] */
@@ -165,7 +166,7 @@ class AliasPackage extends BasePackage implements CompletePackageInterface
     }
 
     /**
-     * @param Link[]  $links
+     * @param Link[] $links
      * @param string $linkType
      *
      * @return Link[]

@@ -14,6 +14,8 @@ namespace Composer\Command;
 
 use Composer\Factory;
 use Composer\Package\Loader\ValidatingArrayLoader;
+use Composer\Plugin\CommandEvent;
+use Composer\Plugin\PluginEvents;
 use Composer\Util\ConfigValidator;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -26,7 +28,7 @@ use Symfony\Component\Console\Output\OutputInterface;
  * @author Robert Schönthal <seroscho@googlemail.com>
  * @author Jordi Boggiano <j.boggiano@seld.be>
  */
-class ValidateCommand extends Command
+class ValidateCommand extends BaseCommand
 {
     /**
      * configure
@@ -110,6 +112,10 @@ EOT
                 }
             }
         }
+
+        $commandEvent = new CommandEvent(PluginEvents::COMMAND, 'validate', $input, $output);
+        $eventCode = $composer->getEventDispatcher()->dispatch($commandEvent->getName(), $commandEvent);
+        $exitCode = max($eventCode, $exitCode);
 
         return $exitCode;
     }

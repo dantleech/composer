@@ -13,7 +13,8 @@
 namespace Composer\Repository;
 
 use Composer\IO\IOInterface;
-use Composer\Semver\VersionParser;
+use Composer\Semver\VersionParser as SemverVersionParser;
+use Composer\Package\Version\VersionParser;
 use Composer\Repository\Pear\ChannelReader;
 use Composer\Package\CompletePackage;
 use Composer\Repository\Pear\ChannelInfo;
@@ -22,6 +23,7 @@ use Composer\Package\Link;
 use Composer\Semver\Constraint\Constraint;
 use Composer\Util\RemoteFilesystem;
 use Composer\Config;
+use Composer\Factory;
 
 /**
  * Builds list of package from PEAR channel.
@@ -47,6 +49,7 @@ class PearRepository extends ArrayRepository implements ConfigurableRepositoryIn
 
     public function __construct(array $repoConfig, IOInterface $io, Config $config, EventDispatcher $dispatcher = null, RemoteFilesystem $rfs = null)
     {
+        parent::__construct();
         if (!preg_match('{^https?://}', $repoConfig['url'])) {
             $repoConfig['url'] = 'http://'.$repoConfig['url'];
         }
@@ -58,7 +61,7 @@ class PearRepository extends ArrayRepository implements ConfigurableRepositoryIn
 
         $this->url = rtrim($repoConfig['url'], '/');
         $this->io = $io;
-        $this->rfs = $rfs ?: new RemoteFilesystem($this->io, $config);
+        $this->rfs = $rfs ?: Factory::createRemoteFilesystem($this->io, $config);
         $this->vendorAlias = isset($repoConfig['vendor-alias']) ? $repoConfig['vendor-alias'] : null;
         $this->versionParser = new VersionParser();
         $this->repoConfig = $repoConfig;
@@ -92,11 +95,11 @@ class PearRepository extends ArrayRepository implements ConfigurableRepositoryIn
     /**
      * Builds CompletePackages from PEAR package definition data.
      *
-     * @param  ChannelInfo     $channelInfo
-     * @param  VersionParser   $versionParser
+     * @param  ChannelInfo         $channelInfo
+     * @param  SemverVersionParser $versionParser
      * @return CompletePackage
      */
-    private function buildComposerPackages(ChannelInfo $channelInfo, VersionParser $versionParser)
+    private function buildComposerPackages(ChannelInfo $channelInfo, SemverVersionParser $versionParser)
     {
         $result = array();
         foreach ($channelInfo->getPackages() as $packageDefinition) {
@@ -104,9 +107,7 @@ class PearRepository extends ArrayRepository implements ConfigurableRepositoryIn
                 try {
                     $normalizedVersion = $versionParser->normalize($version);
                 } catch (\UnexpectedValueException $e) {
-                    if ($this->io->isVerbose()) {
-                        $this->io->writeError('Could not load '.$packageDefinition->getPackageName().' '.$version.': '.$e->getMessage());
-                    }
+                    $this->io->writeError('Could not load '.$packageDefinition->getPackageName().' '.$version.': '.$e->getMessage(), true, IOInterface::VERBOSE);
                     continue;
                 }
 

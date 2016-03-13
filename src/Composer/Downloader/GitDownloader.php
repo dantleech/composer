@@ -14,6 +14,7 @@ namespace Composer\Downloader;
 
 use Composer\Package\PackageInterface;
 use Composer\Util\Git as GitUtil;
+use Composer\Util\Platform;
 use Composer\Util\ProcessExecutor;
 use Composer\IO\IOInterface;
 use Composer\Util\Filesystem;
@@ -22,7 +23,7 @@ use Composer\Config;
 /**
  * @author Jordi Boggiano <j.boggiano@seld.be>
  */
-class GitDownloader extends VcsDownloader
+class GitDownloader extends VcsDownloader implements DvcsDownloaderInterface
 {
     private $hasStashedChanges = false;
     private $hasDiscardedChanges = false;
@@ -43,7 +44,7 @@ class GitDownloader extends VcsDownloader
         $path = $this->normalizePath($path);
 
         $ref = $package->getSourceReference();
-        $flag = defined('PHP_WINDOWS_VERSION_MAJOR') ? '/D ' : '';
+        $flag = Platform::isWindows() ? '/D ' : '';
         $command = 'git clone --no-checkout %s %s && cd '.$flag.'%2$s && git remote add composer %1$s && git fetch composer';
         $this->io->writeError("    Cloning ".$ref);
 
@@ -72,8 +73,7 @@ class GitDownloader extends VcsDownloader
     public function doUpdate(PackageInterface $initial, PackageInterface $target, $path, $url)
     {
         GitUtil::cleanEnv();
-        $path = $this->normalizePath($path);
-        if (!is_dir($path.'/.git')) {
+        if (!$this->hasMetadataRepository($path)) {
             throw new \RuntimeException('The .git directory is missing from '.$path.', see https://getcomposer.org/commit-deps for more information');
         }
 
@@ -100,8 +100,7 @@ class GitDownloader extends VcsDownloader
     public function getLocalChanges(PackageInterface $package, $path)
     {
         GitUtil::cleanEnv();
-        $path = $this->normalizePath($path);
-        if (!is_dir($path.'/.git')) {
+        if (!$this->hasMetadataRepository($path)) {
             return;
         }
 
@@ -113,6 +112,75 @@ class GitDownloader extends VcsDownloader
         return trim($output) ?: null;
     }
 
+    public function getUnpushedChanges(PackageInterface $package, $path)
+    {
+        GitUtil::cleanEnv();
+        $path = $this->normalizePath($path);
+        if (!$this->hasMetadataRepository($path)) {
+            return;
+        }
+
+        $command = 'git show-ref --head -d';
+        if (0 !== $this->process->execute($command, $output, $path)) {
+            throw new \RuntimeException('Failed to execute ' . $command . "\n\n" . $this->process->getErrorOutput());
+        }
+
+        $refs = trim($output);
+        if (!preg_match('{^([a-f0-9]+) HEAD$}mi', $refs, $match)) {
+            // could not match the HEAD for some reason
+            return;
+        }
+
+        $headRef = $match[1];
+        if (!preg_match_all('{^'.$headRef.' refs/heads/(.+)$}mi', $refs, $matches)) {
+            // not on a branch, we are either on a not-modified tag or some sort of detached head, so skip this
+            return;
+        }
+
+        // use the first match as branch name for now
+        $branch = $matches[1][0];
+        $unpushedChanges = null;
+
+        // do two passes, as if we find anything we want to fetch and then re-try
+        for ($i = 0; $i <= 1; $i++) {
+            // try to find the a matching branch name in the composer remote
+            foreach ($matches[1] as $candidate) {
+                if (preg_match('{^[a-f0-9]+ refs/remotes/((?:composer|origin)/'.preg_quote($candidate).')$}mi', $refs, $match)) {
+                    $branch = $candidate;
+                    $remoteBranch = $match[1];
+                    break;
+                }
+            }
+
+            // if it doesn't exist, then we assume it is an unpushed branch
+            // this is bad as we have no reference point to do a diff so we just bail listing
+            // the branch as being unpushed
+            if (!isset($remoteBranch)) {
+                $unpushedChanges = 'Branch ' . $branch . ' could not be found on the origin remote and appears to be unpushed';
+            } else {
+                $command = sprintf('git diff --name-status %s...%s --', $remoteBranch, $branch);
+                if (0 !== $this->process->execute($command, $output, $path)) {
+                    throw new \RuntimeException('Failed to execute ' . $command . "\n\n" . $this->process->getErrorOutput());
+                }
+
+                $unpushedChanges = trim($output) ?: null;
+            }
+
+            // first pass and we found unpushed changes, fetch from both remotes to make sure we have up to date
+            // remotes and then try again as outdated remotes can sometimes cause false-positives
+            if ($unpushedChanges && $i === 0) {
+                $this->process->execute('git fetch composer && git fetch origin', $output, $path);
+            }
+
+            // abort after first pass if we didn't find anything
+            if (!$unpushedChanges) {
+                break;
+            }
+        }
+
+        return $unpushedChanges;
+    }
+
     /**
      * {@inheritDoc}
      */
@@ -120,6 +188,12 @@ class GitDownloader extends VcsDownloader
     {
         GitUtil::cleanEnv();
         $path = $this->normalizePath($path);
+
+        $unpushed = $this->getUnpushedChanges($package, $path);
+        if ($unpushed && ($this->io->isInteractive() || $this->config->get('discard-changes') !== true)) {
+            throw new \RuntimeException('Source directory ' . $path . ' has unpushed changes on the current branch: '."\n".$unpushed);
+        }
+
         if (!$changes = $this->getLocalChanges($package, $path)) {
             return;
         }
@@ -286,7 +360,7 @@ class GitDownloader extends VcsDownloader
         if (preg_match('{^(?:https?|git)://'.GitUtil::getGitHubDomainsRegex($this->config).'/([^/]+)/([^/]+?)(?:\.git)?$}', $url, $match)) {
             $protocols = $this->config->get('github-protocols');
             $pushUrl = 'git@'.$match[1].':'.$match[2].'/'.$match[3].'.git';
-            if ($protocols[0] !== 'git') {
+            if (!in_array('ssh', $protocols, true)) {
                 $pushUrl = 'https://' . $match[1] . '/'.$match[2].'/'.$match[3].'.git';
             }
             $cmd = sprintf('git remote set-url --push origin %s', ProcessExecutor::escape($pushUrl));
@@ -353,7 +427,7 @@ class GitDownloader extends VcsDownloader
 
     protected function normalizePath($path)
     {
-        if (defined('PHP_WINDOWS_VERSION_MAJOR') && strlen($path) > 0) {
+        if (Platform::isWindows() && strlen($path) > 0) {
             $basePath = $path;
             $removed = array();
 
@@ -370,5 +444,15 @@ class GitDownloader extends VcsDownloader
         }
 
         return $path;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected function hasMetadataRepository($path)
+    {
+        $path = $this->normalizePath($path);
+
+        return is_dir($path.'/.git');
     }
 }

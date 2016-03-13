@@ -817,7 +817,6 @@ class Solver
                     continue;
                 }
 
-                $oLevel = $level;
                 $level = $this->selectAndInstall($level, $decisionQueue, $disableRules, $rule);
 
                 if (0 === $level) {
@@ -838,7 +837,6 @@ class Solver
                 $lastLevel = null;
                 $lastBranchIndex = 0;
                 $lastBranchOffset  = 0;
-                $l = 0;
 
                 for ($i = count($this->branches) - 1; $i >= 0; $i--) {
                     list($literals, $l) = $this->branches[$i];
@@ -861,7 +859,6 @@ class Solver
 
                     $why = $this->decisions->lastReason();
 
-                    $oLevel = $level;
                     $level = $this->setPropagateLearn($level, $lastLiteral, $disableRules, $why);
 
                     if ($level == 0) {

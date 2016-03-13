@@ -12,7 +12,6 @@ addons:
       - parallel
 
 php:
-  - 5.3.3
   - 5.3
   - 5.4
   - 5.5
@@ -24,13 +23,11 @@ php:
 matrix:
   fast_finish: true
   allow_failures:
-    - php: 7.0
     - php: nightly
 
 before_script:
     - rm -f ~/.phpenv/versions/$(phpenv version-name)/etc/conf.d/xdebug.ini
     - flags=""
-    - if [ `phpenv version-name` == "5.3.3" ]; then flags="--ignore-platform-reqs"; fi
     - composer install $flags
     - bin/composer install $flags
     - git config --global user.name travis-ci

@@ -29,8 +29,8 @@ use Composer\EventDispatcher\EventDispatcher;
 use Composer\Installer\InstallationManager;
 use Composer\Installer\InstallerEvents;
 use Composer\Installer\NoopInstaller;
+use Composer\Installer\SuggestedPackagesReporter;
 use Composer\IO\IOInterface;
-use Composer\Json\JsonFile;
 use Composer\Package\AliasPackage;
 use Composer\Package\CompletePackage;
 use Composer\Package\Link;
@@ -40,7 +40,6 @@ use Composer\Package\PackageInterface;
 use Composer\Package\RootPackageInterface;
 use Composer\Repository\CompositeRepository;
 use Composer\Repository\InstalledArrayRepository;
-use Composer\Repository\InstalledFilesystemRepository;
 use Composer\Repository\PlatformRepository;
 use Composer\Repository\RepositoryInterface;
 use Composer\Repository\RepositoryManager;
@@ -125,9 +124,9 @@ class Installer
     protected $whitelistDependencies = false;
 
     /**
-     * @var array
+     * @var SuggestedPackagesReporter
      */
-    protected $suggestedPackages;
+    protected $suggestedPackagesReporter;
 
     /**
      * @var RepositoryInterface
@@ -168,6 +167,10 @@ class Installer
      */
     public function run()
     {
+        // Disable GC to save CPU cycles, as the dependency solver can create hundreds of thousands
+        // of PHP objects, the GC can spend quite some time walking the tree of references looking
+        // for stuff to collect while there is nothing to collect. This slows things down dramatically
+        // and turning it off results in much better performance. Do not try this at home however.
         gc_collect_cycles();
         gc_disable();
 
@@ -177,33 +180,6 @@ class Installer
             $this->installationManager->addInstaller(new NoopInstaller);
             $this->mockLocalRepositories($this->repositoryManager);
         }
-
-        $workTracker = $this->io->getWorkTracker();
-
-        // TODO remove this BC feature at some point
-        // purge old require-dev packages to avoid conflicts with the new way of handling dev requirements
-        $devRepo = new InstalledFilesystemRepository(new JsonFile($this->config->get('vendor-dir').'/composer/installed_dev.json'));
-        $packages = $devRepo->getPackages();
-        if ($packages) {
-
-            $workTracker->createBound(
-                '<warning>BC Notice: Removing old dev packages to migrate to the new require-dev handling.</warning>',
-                count($packages)
-            );
-
-            $this->io->writeError('<warning>BC Notice: Removing old dev packages to migrate to the new require-dev handling.</warning>');
-            foreach ($packages as $package) {
-                $workTracker->ping();
-                if ($this->installationManager->isPackageInstalled($devRepo, $package)) {
-                    $this->installationManager->uninstall($devRepo, new UninstallOperation($package));
-                }
-            }
-            unlink($this->config->get('vendor-dir').'/composer/installed_dev.json');
-
-            $workTracker->complete();
-        }
-        unset($devRepo, $package);
-        // end BC
 
         if ($this->runScripts) {
             // dispatch pre event
@@ -243,8 +219,11 @@ class Installer
         $aliases = $this->getRootAliases();
         $this->aliasPlatformPackages($platformRepo, $aliases);
 
+        if (!$this->suggestedPackagesReporter) {
+            $this->suggestedPackagesReporter = new SuggestedPackagesReporter($this->io);
+        }
+
         try {
-            $this->suggestedPackages = array();
             $res = $this->doInstall($localRepo, $installedRepo, $platformRepo, $aliases, $this->devMode);
             if ($res !== 0) {
                 $workTracker->complete();
@@ -264,16 +243,7 @@ class Installer
 
         // output suggestions if we're in dev mode
         if ($this->devMode) {
-            foreach ($this->suggestedPackages as $suggestion) {
-                $target = $suggestion['target'];
-                foreach ($installedRepo->getPackages() as $package) {
-                    if (in_array($target, $package->getNames())) {
-                        continue 2;
-                    }
-                }
-
-                $this->io->writeError($suggestion['source'].' suggests installing '.$suggestion['target'].' ('.$suggestion['reason'].')');
-            }
+            $this->suggestedPackagesReporter->output($installedRepo);
         }
 
         # Find abandoned packages and warn user
@@ -391,7 +361,14 @@ class Installer
             }
         }
 
+<<<<<<< HEAD
         $workTracker->complete();
+=======
+        // re-enable GC except on HHVM which triggers a warning here
+        if (!defined('HHVM_VERSION')) {
+            gc_enable();
+        }
+>>>>>>> upstream/master
 
         return 0;
     }
@@ -539,7 +516,11 @@ class Installer
         } elseif ($installFromLock) {
 
             if (!$this->locker->isFresh()) {
+<<<<<<< HEAD
                 $workTracker->log('<warning>Warning: The lock file is not up to date with the latest changes in composer.json. You may be getting outdated dependencies. Run update to update them.</warning>');
+=======
+                $this->io->writeError('<warning>Warning: The lock file is not up to date with the latest changes in composer.json. You may be getting outdated dependencies. Run update to update them.</warning>', true, IOInterface::QUIET);
+>>>>>>> upstream/master
             }
 
             $packages = $lockedRepository->getPackages();
@@ -596,16 +577,14 @@ class Installer
             $operations = $solver->solve($request, $this->ignorePlatformReqs);
             $this->eventDispatcher->dispatchInstallerEvent(InstallerEvents::POST_DEPENDENCIES_SOLVING, $this->devMode, $policy, $pool, $installedRepo, $request, $operations);
         } catch (SolverProblemsException $e) {
-            $this->io->writeError('<error>Your requirements could not be resolved to an installable set of packages.</error>');
+            $this->io->writeError('<error>Your requirements could not be resolved to an installable set of packages.</error>', true, IOInterface::QUIET);
             $this->io->writeError($e->getMessage());
 
             return max(1, $e->getCode());
         }
 
-        if ($this->io->isVerbose()) {
-            $this->io->writeError("Analyzed ".count($pool)." packages to resolve dependencies");
-            $this->io->writeError("Analyzed ".$solver->getRuleSetSize()." rules to resolve dependencies");
-        }
+        $this->io->writeError("Analyzed ".count($pool)." packages to resolve dependencies", true, IOInterface::VERBOSE);
+        $this->io->writeError("Analyzed ".$solver->getRuleSetSize()." rules to resolve dependencies", true, IOInterface::VERBOSE);
 
         // force dev packages to be updated if we update or install from a (potentially new) lock
         $operations = $this->processDevPackages($localRepo, $pool, $policy, $repositories, $installedRepo, $lockedRepository, $installFromLock, $withDevReqs, 'force-updates', $operations);
@@ -623,13 +602,7 @@ class Installer
         foreach ($operations as $operation) {
             // collect suggestions
             if ('install' === $operation->getJobType()) {
-                foreach ($operation->getPackage()->getSuggests() as $target => $reason) {
-                    $this->suggestedPackages[] = array(
-                        'source' => $operation->getPackage()->getPrettyName(),
-                        'target' => $target,
-                        'reason' => $reason,
-                    );
-                }
+                $this->suggestedPackagesReporter->addSuggestionsFromPackage($operation->getPackage());
             }
 
             // not installing from lock, force dev packages' references if they're in root package refs
@@ -653,10 +626,8 @@ class Installer
                     && (!$operation->getTargetPackage()->getSourceReference() || $operation->getTargetPackage()->getSourceReference() === $operation->getInitialPackage()->getSourceReference())
                     && (!$operation->getTargetPackage()->getDistReference() || $operation->getTargetPackage()->getDistReference() === $operation->getInitialPackage()->getDistReference())
                 ) {
-                    if ($this->io->isDebug()) {
-                        $this->io->writeError('  - Skipping update of '. $operation->getTargetPackage()->getPrettyName().' to the same reference-locked version');
-                        $this->io->writeError('');
-                    }
+                    $this->io->writeError('  - Skipping update of '. $operation->getTargetPackage()->getPrettyName().' to the same reference-locked version', true, IOInterface::DEBUG);
+                    $this->io->writeError('', true, IOInterface::DEBUG);
 
                     continue;
                 }
@@ -1284,6 +1255,7 @@ class Installer
 
                     foreach ($requirePackages as $requirePackage) {
                         if (isset($skipPackages[$requirePackage->getName()])) {
+                            $this->io->writeError('<warning>Dependency "' . $requirePackage->getName() . '" is also a root requirement, but is not explicitly whitelisted. Ignoring.</warning>');
                             continue;
                         }
                         $packageQueue->enqueue($requirePackage);
@@ -1601,6 +1573,17 @@ class Installer
     public function disablePlugins()
     {
         $this->installationManager->disablePlugins();
+
+        return $this;
+    }
+
+    /**
+     * @param SuggestedPackagesReporter $suggestedPackagesReporter
+     * @return Installer
+     */
+    public function setSuggestedPackagesReporter(SuggestedPackagesReporter $suggestedPackagesReporter)
+    {
+        $this->suggestedPackagesReporter = $suggestedPackagesReporter;
 
         return $this;
     }

@@ -15,7 +15,7 @@ namespace Composer\Repository;
 use Composer\Downloader\TransportException;
 use Composer\IO\WorkTracker\WorkTrackerInterface;
 use Composer\Repository\Vcs\VcsDriverInterface;
-use Composer\Semver\VersionParser;
+use Composer\Package\Version\VersionParser;
 use Composer\Package\Loader\ArrayLoader;
 use Composer\Package\Loader\ValidatingArrayLoader;
 use Composer\Package\Loader\InvalidPackageException;
@@ -40,9 +40,11 @@ class VcsRepository extends ArrayRepository implements ConfigurableRepositoryInt
     protected $loader;
     protected $repoConfig;
     protected $branchErrorOccurred = false;
+    private $drivers;
 
     public function __construct(array $repoConfig, IOInterface $io, Config $config, EventDispatcher $dispatcher = null, array $drivers = null)
     {
+        parent::__construct();
         $this->drivers = $drivers ?: array(
             'github'        => 'Composer\Repository\Vcs\GitHubDriver',
             'gitlab'        => 'Composer\Repository\Vcs\GitLabDriver',
@@ -78,6 +80,7 @@ class VcsRepository extends ArrayRepository implements ConfigurableRepositoryInt
         if (isset($this->drivers[$this->type])) {
             $class = $this->drivers[$this->type];
             $driver = new $class($this->repoConfig, $this->io, $this->config);
+            /** @var VcsDriverInterface $driver */
             $driver->initialize();
 
             return $driver;
@@ -86,6 +89,7 @@ class VcsRepository extends ArrayRepository implements ConfigurableRepositoryInt
         foreach ($this->drivers as $driver) {
             if ($driver::supports($this->io, $this->config, $this->url)) {
                 $driver = new $driver($this->repoConfig, $this->io, $this->config);
+                /** @var VcsDriverInterface $driver */
                 $driver->initialize();
 
                 return $driver;
@@ -95,6 +99,7 @@ class VcsRepository extends ArrayRepository implements ConfigurableRepositoryInt
         foreach ($this->drivers as $driver) {
             if ($driver::supports($this->io, $this->config, $this->url, true)) {
                 $driver = new $driver($this->repoConfig, $this->io, $this->config);
+                /** @var VcsDriverInterface $driver */
                 $driver->initialize();
 
                 return $driver;
@@ -246,7 +251,8 @@ class VcsRepository extends ArrayRepository implements ConfigurableRepositoryInt
                 if ('dev-' === substr($parsedBranch, 0, 4) || '9999999-dev' === $parsedBranch) {
                     $data['version'] = 'dev-' . $data['version'];
                 } else {
-                    $data['version'] = preg_replace('{(\.9{7})+}', '.x', $parsedBranch);
+                    $prefix = substr($branch, 0, 1) === 'v' ? 'v' : '';
+                    $data['version'] = $prefix . preg_replace('{(\.9{7})+}', '.x', $parsedBranch);
                 }
 
                 if ($verbose) {

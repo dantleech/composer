@@ -112,6 +112,27 @@ class ConfigTest extends \PHPUnit_Framework_TestCase
         return $data;
     }
 
+    public function testPreferredInstallAsString()
+    {
+        $config = new Config(false);
+        $config->merge(array('config' => array('preferred-install' => 'source')));
+        $config->merge(array('config' => array('preferred-install' => 'dist')));
+
+        $this->assertEquals('dist', $config->get('preferred-install'));
+    }
+
+    public function testMergePreferredInstall()
+    {
+        $config = new Config(false);
+        $config->merge(array('config' => array('preferred-install' => 'dist')));
+        $config->merge(array('config' => array('preferred-install' => array('foo/*' => 'source'))));
+
+        // This assertion needs to make sure full wildcard preferences are placed last
+        // Handled by composer because we convert string preferences for BC, all other
+        // care for ordering and collision prevention is up to the user
+        $this->assertEquals(array('foo/*' => 'source', '*' => 'dist'), $config->get('preferred-install'));
+    }
+
     public function testMergeGithubOauth()
     {
         $config = new Config(false);
@@ -148,6 +169,16 @@ class ConfigTest extends \PHPUnit_Framework_TestCase
         $this->assertEquals('/baz', $config->get('cache-dir'));
     }
 
+    public function testStreamWrapperDirs()
+    {
+        $config = new Config(false, '/foo/bar');
+        $config->merge(array('config' => array(
+            'cache-dir' => 's3://baz/',
+        )));
+
+        $this->assertEquals('s3://baz', $config->get('cache-dir'));
+    }
+
     public function testFetchingRelativePaths()
     {
         $config = new Config(false, '/foo/bar');
@@ -165,9 +196,35 @@ class ConfigTest extends \PHPUnit_Framework_TestCase
     public function testOverrideGithubProtocols()
     {
         $config = new Config(false);
-        $config->merge(array('config' => array('github-protocols' => array('https', 'git'))));
+        $config->merge(array('config' => array('github-protocols' => array('https', 'ssh'))));
         $config->merge(array('config' => array('github-protocols' => array('https'))));
 
         $this->assertEquals(array('https'), $config->get('github-protocols'));
+    }
+
+    public function testGitDisabledByDefaultInGithubProtocols()
+    {
+        $config = new Config(false);
+        $config->merge(array('config' => array('github-protocols' => array('https', 'git'))));
+        $this->assertEquals(array('https'), $config->get('github-protocols'));
+
+        $config->merge(array('config' => array('secure-http' => false)));
+        $this->assertEquals(array('https', 'git'), $config->get('github-protocols'));
+    }
+
+    /**
+     * @group TLS
+     */
+    public function testDisableTlsCanBeOverridden()
+    {
+        $config = new Config;
+        $config->merge(
+            array('config' => array('disable-tls' => 'false'))
+        );
+        $this->assertFalse($config->get('disable-tls'));
+        $config->merge(
+            array('config' => array('disable-tls' => 'true'))
+        );
+        $this->assertTrue($config->get('disable-tls'));
     }
 }

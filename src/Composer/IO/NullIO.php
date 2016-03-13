@@ -73,28 +73,28 @@ class NullIO extends BaseIO
     /**
      * {@inheritDoc}
      */
-    public function write($messages, $newline = true)
+    public function write($messages, $newline = true, $verbosity = self::NORMAL)
     {
     }
 
     /**
      * {@inheritDoc}
      */
-    public function writeError($messages, $newline = true)
+    public function writeError($messages, $newline = true, $verbosity = self::NORMAL)
     {
     }
 
     /**
      * {@inheritDoc}
      */
-    public function overwrite($messages, $newline = true, $size = 80)
+    public function overwrite($messages, $newline = true, $size = 80, $verbosity = self::NORMAL)
     {
     }
 
     /**
      * {@inheritDoc}
      */
-    public function overwriteError($messages, $newline = true, $size = 80)
+    public function overwriteError($messages, $newline = true, $size = 80, $verbosity = self::NORMAL)
     {
     }
 
@@ -144,5 +144,13 @@ class NullIO extends BaseIO
     public function setWorkTracker(WorkTrackerInterface $workTracker)
     {
         $this->workTracker = new ContextWorkTracker($workTracker);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function select($question, $choices, $default, $attempts = false, $errorMessage = 'Value "%s" is invalid', $multiselect = false)
+    {
+        return $default;
     }
 }

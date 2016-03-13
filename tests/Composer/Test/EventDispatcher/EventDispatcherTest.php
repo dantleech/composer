@@ -14,10 +14,14 @@ namespace Composer\Test\EventDispatcher;
 
 use Composer\EventDispatcher\Event;
 use Composer\Installer\InstallerEvents;
+use Composer\Config;
+use Composer\Composer;
 use Composer\TestCase;
+use Composer\IO\BufferIO;
 use Composer\Script\ScriptEvents;
 use Composer\Script\CommandEvent;
 use Composer\Util\ProcessExecutor;
+use Symfony\Component\Console\Output\OutputInterface;
 
 class EventDispatcherTest extends TestCase
 {
@@ -84,7 +88,7 @@ class EventDispatcherTest extends TestCase
 
         $dispatcher = $this->getMockBuilder('Composer\EventDispatcher\EventDispatcher')
             ->setConstructorArgs(array(
-                $this->getMock('Composer\Composer'),
+                $this->createComposerInstance(),
                 $io,
                 $process,
             ))
@@ -114,8 +118,13 @@ class EventDispatcherTest extends TestCase
 
         $dispatcher = $this->getMockBuilder('Composer\EventDispatcher\EventDispatcher')
             ->setConstructorArgs(array(
+<<<<<<< HEAD
                 $this->getMock('Composer\Composer'),
                 $io,
+=======
+                $this->createComposerInstance(),
+                $io = new BufferIO('', OutputInterface::VERBOSITY_VERBOSE),
+>>>>>>> upstream/master
                 $process,
             ))
             ->setMethods(array(
@@ -137,6 +146,7 @@ class EventDispatcherTest extends TestCase
             ->method('getListeners')
             ->will($this->returnValue($listeners));
 
+<<<<<<< HEAD
         $io->expects($this->any())
             ->method('isVerbose')
             ->willReturn(1);
@@ -153,7 +163,14 @@ class EventDispatcherTest extends TestCase
             ->method('writeError')
             ->with($this->equalTo('> post-install-cmd: echo -n bar'));
 
+=======
+>>>>>>> upstream/master
         $dispatcher->dispatchScript(ScriptEvents::POST_INSTALL_CMD, false);
+
+        $expected = '> post-install-cmd: echo -n foo'.PHP_EOL.
+            '> post-install-cmd: Composer\Test\EventDispatcher\EventDispatcherTest::someMethod'.PHP_EOL.
+            '> post-install-cmd: echo -n bar'.PHP_EOL;
+        $this->assertEquals($expected, $io->getOutput());
     }
 
     public function testDispatcherCanExecuteComposerScriptGroups()
@@ -166,8 +183,13 @@ class EventDispatcherTest extends TestCase
 
         $dispatcher = $this->getMockBuilder('Composer\EventDispatcher\EventDispatcher')
             ->setConstructorArgs(array(
+<<<<<<< HEAD
                 $composer = $this->getMock('Composer\Composer'),
                 $io,
+=======
+                $composer = $this->createComposerInstance(),
+                $io = new BufferIO('', OutputInterface::VERBOSITY_VERBOSE),
+>>>>>>> upstream/master
                 $process,
             ))
             ->setMethods(array(
@@ -193,6 +215,7 @@ class EventDispatcherTest extends TestCase
                 return array();
             }));
 
+<<<<<<< HEAD
         $io->expects($this->any())
             ->method('isVerbose')
             ->willReturn(1);
@@ -217,7 +240,15 @@ class EventDispatcherTest extends TestCase
             ->method('writeError')
             ->with($this->equalTo('> group: echo -n bar'));
 
+=======
+>>>>>>> upstream/master
         $dispatcher->dispatch('root', new CommandEvent('root', $composer, $io));
+        $expected = '> root: @group'.PHP_EOL.
+            '> group: echo -n foo'.PHP_EOL.
+            '> group: @subgroup'.PHP_EOL.
+            '> subgroup: echo -n baz'.PHP_EOL.
+            '> group: echo -n bar'.PHP_EOL;
+        $this->assertEquals($expected, $io->getOutput());
     }
 
     /**
@@ -233,8 +264,13 @@ class EventDispatcherTest extends TestCase
 
         $dispatcher = $this->getMockBuilder('Composer\EventDispatcher\EventDispatcher')
         ->setConstructorArgs(array(
+<<<<<<< HEAD
             $composer = $this->getMock('Composer\Composer'),
             $io,
+=======
+            $composer = $this->createComposerInstance(),
+            $io = $this->getMock('Composer\IO\IOInterface'),
+>>>>>>> upstream/master
             $process,
         ))
         ->setMethods(array(
@@ -261,7 +297,7 @@ class EventDispatcherTest extends TestCase
     {
         $dispatcher = $this->getMockBuilder('Composer\EventDispatcher\EventDispatcher')
             ->setConstructorArgs(array(
-                $this->getMock('Composer\Composer'),
+                $this->createComposerInstance(),
                 $io,
             ))
             ->setMethods(array('getListeners'))
@@ -292,8 +328,13 @@ class EventDispatcherTest extends TestCase
 
         $dispatcher = $this->getMockBuilder('Composer\EventDispatcher\EventDispatcher')
             ->setConstructorArgs(array(
+<<<<<<< HEAD
                 $this->getMock('Composer\Composer'),
                 $io,
+=======
+                $this->createComposerInstance(),
+                $io = $this->getMock('Composer\IO\IOInterface'),
+>>>>>>> upstream/master
                 new ProcessExecutor,
             ))
             ->setMethods(array('getListeners'))
@@ -322,8 +363,13 @@ class EventDispatcherTest extends TestCase
 
         $dispatcher = $this->getMockBuilder('Composer\EventDispatcher\EventDispatcher')
             ->setConstructorArgs(array(
+<<<<<<< HEAD
                 $this->getMock('Composer\Composer'),
                 $io,
+=======
+                $this->createComposerInstance(),
+                $io = $this->getMock('Composer\IO\IOInterface'),
+>>>>>>> upstream/master
                 new ProcessExecutor,
             ))
             ->setMethods(array('getListeners'))
@@ -361,8 +407,13 @@ class EventDispatcherTest extends TestCase
 
         $dispatcher = $this->getMockBuilder('Composer\EventDispatcher\EventDispatcher')
             ->setConstructorArgs(array(
+<<<<<<< HEAD
                     $this->getMock('Composer\Composer'),
                     $io,
+=======
+                    $this->createComposerInstance(),
+                    $this->getMock('Composer\IO\IOInterface'),
+>>>>>>> upstream/master
                     $process,
                 ))
             ->setMethods(array('getListeners'))
@@ -399,5 +450,14 @@ class EventDispatcherTest extends TestCase
     public static function someMethod()
     {
         return true;
+    }
+
+    private function createComposerInstance()
+    {
+        $composer = new Composer;
+        $config = new Config;
+        $composer->setConfig($config);
+
+        return $composer;
     }
 }

@@ -13,14 +13,35 @@
 namespace Composer\Test\Downloader;
 
 use Composer\Downloader\XzDownloader;
+use Composer\TestCase;
+use Composer\Util\Filesystem;
+use Composer\Util\Platform;
+use Composer\Util\RemoteFilesystem;
 
-class XzDownloaderTest extends \PHPUnit_Framework_TestCase
+class XzDownloaderTest extends TestCase
 {
+    /**
+     * @var Filesystem
+     */
+    private $fs;
+
+    /**
+     * @var string
+     */
+    private $testDir;
+
     public function setUp()
     {
-        if (defined('PHP_WINDOWS_VERSION_BUILD')) {
+        if (Platform::isWindows()) {
             $this->markTestSkipped('Skip test on Windows');
         }
+        $this->testDir = $this->getUniqueTmpDirectory();
+    }
+
+    public function tearDown()
+    {
+        $this->fs = new Filesystem;
+        $this->fs->removeDirectory($this->testDir);
     }
 
     public function testErrorMessages()
@@ -46,11 +67,11 @@ class XzDownloaderTest extends \PHPUnit_Framework_TestCase
         $config->expects($this->any())
             ->method('get')
             ->with('vendor-dir')
-            ->will($this->returnValue(sys_get_temp_dir().'/composer-xz-test-vendor'));
-        $downloader = new XzDownloader($io, $config);
+            ->will($this->returnValue($this->testDir));
+        $downloader = new XzDownloader($io, $config, null, null, null, new RemoteFilesystem($io));
 
         try {
-            $downloader->download($packageMock, sys_get_temp_dir().'/composer-xz-test');
+            $downloader->download($packageMock, $this->getUniqueTmpDirectory());
             $this->fail('Download of invalid tarball should throw an exception');
         } catch (\RuntimeException $e) {
             $this->assertFalse(strpos($e->getMessage(), 'File format not recognized') === false && strpos($e->getMessage(), 'Unrecognized archive format') === false, 'Error message contains `File format not recognized` or `Unrecognized archive format`');

@@ -313,9 +313,9 @@ EOF;
         return $classMap;
     }
 
-    private function generateClassMap($dir, $blacklist = null, $namespaceFilter = null)
+    private function generateClassMap($dir, $blacklist = null, $namespaceFilter = null, $showAmbiguousWarning = true)
     {
-        return ClassMapGenerator::createMap($dir, $blacklist, $this->io, $namespaceFilter);
+        return ClassMapGenerator::createMap($dir, $blacklist, $showAmbiguousWarning ? $this->io : null, $namespaceFilter);
     }
 
     public function buildPackageMap(InstallationManager $installationManager, PackageInterface $mainPackage, array $packages)
@@ -417,7 +417,7 @@ EOF;
         if (isset($autoloads['classmap'])) {
             foreach ($autoloads['classmap'] as $dir) {
                 try {
-                    $loader->addClassMap($this->generateClassMap($dir));
+                    $loader->addClassMap($this->generateClassMap($dir, null, null, false));
                 } catch (\RuntimeException $e) {
                     $this->io->writeError('<warning>'.$e->getMessage().'</warning>');
                 }
@@ -578,23 +578,21 @@ HEADER;
 INCLUDE_PATH;
         }
 
-        $file .= <<<'PSR0'
+        if (!$this->classMapAuthoritative) {
+            $file .= <<<'PSR04'
         $map = require __DIR__ . '/autoload_namespaces.php';
         foreach ($map as $namespace => $path) {
             $loader->set($namespace, $path);
         }
 
-
-PSR0;
-
-        $file .= <<<'PSR4'
         $map = require __DIR__ . '/autoload_psr4.php';
         foreach ($map as $namespace => $path) {
             $loader->setPsr4($namespace, $path);
         }
 
 
-PSR4;
+PSR04;
+        }
 
         if ($useClassMap) {
             $file .= <<<'CLASSMAP'

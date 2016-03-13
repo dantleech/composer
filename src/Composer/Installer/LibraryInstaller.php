@@ -17,7 +17,9 @@ use Composer\IO\IOInterface;
 use Composer\Repository\InstalledRepositoryInterface;
 use Composer\Package\PackageInterface;
 use Composer\Util\Filesystem;
+use Composer\Util\Platform;
 use Composer\Util\ProcessExecutor;
+use Composer\Util\Silencer;
 
 /**
  * Package installation manager.
@@ -130,7 +132,7 @@ class LibraryInstaller implements InstallerInterface
         if (strpos($package->getName(), '/')) {
             $packageVendorDir = dirname($downloadPath);
             if (is_dir($packageVendorDir) && $this->filesystem->isDirEmpty($packageVendorDir)) {
-                @rmdir($packageVendorDir);
+                Silencer::call('rmdir', $packageVendorDir);
             }
         }
     }
@@ -151,7 +153,7 @@ class LibraryInstaller implements InstallerInterface
     /**
      * Returns the base path of the package without target-dir path
      *
-     * It is used for BC as getInstallPath tends to be overriden by
+     * It is used for BC as getInstallPath tends to be overridden by
      * installer plugins but not getPackageBasePath
      *
      * @param  PackageInterface $package
@@ -233,14 +235,14 @@ class LibraryInstaller implements InstallerInterface
                     // likely leftover from a previous install, make sure
                     // that the target is still executable in case this
                     // is a fresh install of the vendor.
-                    @chmod($link, 0777 & ~umask());
+                    Silencer::call('chmod', $link, 0777 & ~umask());
                 }
                 $this->io->writeError('    Skipped installation of bin '.$bin.' for package '.$package->getName().': name conflicts with an existing file');
                 continue;
             }
 
             if ($this->binCompat === "auto") {
-                if (defined('PHP_WINDOWS_VERSION_BUILD')) {
+                if (Platform::isWindows()) {
                     $this->installFullBinaries($binPath, $link, $bin, $package);
                 } else {
                     $this->installSymlinkBinaries($binPath, $link);
@@ -248,7 +250,7 @@ class LibraryInstaller implements InstallerInterface
             } elseif ($this->binCompat === "full") {
                 $this->installFullBinaries($binPath, $link, $bin, $package);
             }
-            @chmod($link, 0777 & ~umask());
+            Silencer::call('chmod', $link, 0777 & ~umask());
         }
     }
 
@@ -298,7 +300,7 @@ class LibraryInstaller implements InstallerInterface
 
         // attempt removing the bin dir in case it is left empty
         if ((is_dir($this->binDir)) && ($this->filesystem->isDirEmpty($this->binDir))) {
-            @rmdir($this->binDir);
+            Silencer::call('rmdir', $this->binDir);
         }
     }
 
@@ -331,6 +333,7 @@ class LibraryInstaller implements InstallerInterface
         }
 
         return "@ECHO OFF\r\n".
+            "setlocal DISABLEDELAYEDEXPANSION\r\n".
             "SET BIN_TARGET=%~dp0/".trim(ProcessExecutor::escape($binPath), '"')."\r\n".
             "{$caller} \"%BIN_TARGET%\" %*\r\n";
     }
@@ -354,7 +357,7 @@ if command -v 'cygpath' >/dev/null 2>&1; then
 	# we could be using cygwin PHP which does not require this, so we
 	# test if the path to PHP starts with /cygdrive/ rather than /usr/bin
 	if [[ $(which php) == /cygdrive/* ]]; then
-		dir=$(cygpath -m \$dir);
+		dir=$(cygpath -m "\$dir");
 	fi
 fi
 
