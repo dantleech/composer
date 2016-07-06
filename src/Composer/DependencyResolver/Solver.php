@@ -12,6 +12,7 @@
 
 namespace Composer\DependencyResolver;
 
+use Composer\IO\IOInterface;
 use Composer\Repository\RepositoryInterface;
 use Composer\IO\WorkTracker\WorkTrackerInterface;
 use Composer\Repository\PlatformRepository;
@@ -54,24 +55,29 @@ class Solver
     protected $problems = array();
     /** @var array */
     protected $learnedPool = array();
-
-    protected $workTracker = array();
+    /** @var WorkTrackerInterface */
+    protected $workTracker = null;
 
     /** @var array */
     protected $learnedWhy = array();
+
+    /** @var IOInterface */
+    protected $io;
 
     /**
      * @param PolicyInterface     $policy
      * @param Pool                $pool
      * @param RepositoryInterface $installed
+     * @param IOInterface         $io
      */
-    public function __construct(PolicyInterface $policy, Pool $pool, RepositoryInterface $installed, WorkTrackerInterface $workTracker)
+    public function __construct(PolicyInterface $policy, Pool $pool, RepositoryInterface $installed, IOInterface $io)
     {
+        $this->io = $io;
+        $this->workTracker = $io->getWorkTracker();
         $this->policy = $policy;
         $this->pool = $pool;
         $this->installed = $installed;
         $this->ruleSetGenerator = new RuleSetGenerator($policy, $pool, $workTracker);
-        $this->workTracker = $workTracker;
     }
 
     /**
@@ -234,13 +240,15 @@ class Solver
         $this->makeAssertionRuleDecisions();
         $this->workTracker->ping();
 
+        $this->io->writeError('Resolving dependencies through SAT', true, IOInterface::DEBUG);
         $this->workTracker->createUnbound('Running SAT');
+        $before = microtime(true);
         $this->runSat(true);
+        $this->io->writeError(sprintf('Dependency resolution completed in %.3f seconds', microtime(true) - $before), true, IOInterface::VERBOSE);
         $this->workTracker->complete();
         $this->workTracker->ping();
 
         $this->workTracker->createBound('Making decisions for undecided packages', count($this->installedMap));
-
         foreach ($this->installedMap as $packageId => $void) {
             if ($this->decisions->undecided($packageId)) {
                 $this->decisions->decide(-$packageId, 1, null);

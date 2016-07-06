@@ -15,6 +15,7 @@ namespace Composer\Test\DependencyResolver;
 use Composer\IO\WorkTracker\ContextWorkTracker;
 use Composer\IO\WorkTracker\Formatter\EmptyFormatter;
 use Composer\IO\WorkTracker\UnboundWorkTracker;
+use Composer\IO\NullIO;
 use Composer\Repository\ArrayRepository;
 use Composer\DependencyResolver\DefaultPolicy;
 use Composer\DependencyResolver\Pool;
@@ -41,8 +42,7 @@ class SolverTest extends TestCase
 
         $this->request = new Request($this->pool);
         $this->policy = new DefaultPolicy;
-        $workTracker = new ContextWorkTracker(new UnboundWorkTracker('Solver Test', new EmptyFormatter()));
-        $this->solver = new Solver($this->policy, $this->pool, $this->repoInstalled, $workTracker);
+        $this->solver = new Solver($this->policy, $this->pool, $this->repoInstalled, new NullIO());
     }
 
     public function testSolverInstallSingle()

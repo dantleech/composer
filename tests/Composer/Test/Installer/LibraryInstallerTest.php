@@ -143,22 +143,22 @@ class LibraryInstallerTest extends TestCase
         $target  = $this->createPackageMock();
 
         $initial
-            ->expects($this->once())
+            ->expects($this->any())
             ->method('getPrettyName')
             ->will($this->returnValue('package1'));
 
         $initial
-            ->expects($this->once())
+            ->expects($this->any())
             ->method('getTargetDir')
             ->will($this->returnValue('oldtarget'));
 
         $target
-            ->expects($this->once())
+            ->expects($this->any())
             ->method('getPrettyName')
             ->will($this->returnValue('package1'));
 
         $target
-            ->expects($this->once())
+            ->expects($this->any())
             ->method('getTargetDir')
             ->will($this->returnValue('newtarget'));
 
@@ -253,6 +253,32 @@ class LibraryInstallerTest extends TestCase
             ->will($this->returnValue('foo/bar'));
 
         $this->assertEquals($this->vendorDir.'/'.$package->getPrettyName().'/Some/Namespace', $library->getInstallPath($package));
+    }
+
+    /**
+     * @depends testInstallerCreationShouldNotCreateVendorDirectory
+     * @depends testInstallerCreationShouldNotCreateBinDirectory
+     */
+    public function testEnsureBinariesInstalled()
+    {
+        $binaryInstallerMock = $this->getMockBuilder('Composer\Installer\BinaryInstaller')
+            ->disableOriginalConstructor()
+            ->getMock();
+
+        $library = new LibraryInstaller($this->io, $this->composer, 'library', null, $binaryInstallerMock);
+        $package = $this->createPackageMock();
+
+        $binaryInstallerMock
+            ->expects($this->never())
+            ->method('removeBinaries')
+            ->with($package);
+
+        $binaryInstallerMock
+            ->expects($this->once())
+            ->method('installBinaries')
+            ->with($package, $library->getInstallPath($package), false);
+
+        $library->ensureBinariesPresence($package);
     }
 
     protected function createPackageMock()
