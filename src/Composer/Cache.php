@@ -14,6 +14,7 @@ namespace Composer;
 
 use Composer\IO\IOInterface;
 use Composer\Util\Filesystem;
+use Composer\Util\Silencer;
 use Symfony\Component\Finder\Finder;
 
 /**
@@ -43,10 +44,17 @@ class Cache
         $this->whitelist = $whitelist;
         $this->filesystem = $filesystem ?: new Filesystem();
 
-        if (!is_dir($this->root)) {
-            if (!@mkdir($this->root, 0777, true)) {
-                $this->enabled = false;
-            }
+        if (preg_match('{(^|[\\\\/])(\$null|NUL|/dev/null)([\\\\/]|$)}', $cacheDir)) {
+            $this->enabled = false;
+            return;
+        }
+
+        if (
+            (!is_dir($this->root) && !Silencer::call('mkdir', $this->root, 0777, true))
+            || !is_writable($this->root)
+        ) {
+            $this->io->writeError('<warning>Cannot create cache directory ' . $this->root . ', or directory is not writable. Proceeding without cache</warning>');
+            $this->enabled = false;
         }
     }
 
@@ -64,11 +72,13 @@ class Cache
     {
         $file = preg_replace('{[^'.$this->whitelist.']}i', '-', $file);
         if ($this->enabled && file_exists($this->root . $file)) {
-            if ($this->io->isDebug()) {
-                $this->io->write('Reading '.$this->root . $file.' from cache');
-            }
+            $this->io->getWorkTracker()->createUnbound('Reading ' . $file . ' from cache');
 
-            return file_get_contents($this->root . $file);
+            $this->io->writeError('Reading '.$this->root . $file.' from cache', true, IOInterface::DEBUG);
+            $result = file_get_contents($this->root . $file);
+
+            $this->io->getWorkTracker()->complete();
+            return $result;
         }
 
         return false;
@@ -79,11 +89,31 @@ class Cache
         if ($this->enabled) {
             $file = preg_replace('{[^'.$this->whitelist.']}i', '-', $file);
 
-            if ($this->io->isDebug()) {
-                $this->io->write('Writing '.$this->root . $file.' into cache');
-            }
+            $this->io->writeError('Writing '.$this->root . $file.' into cache', true, IOInterface::DEBUG);
 
-            return file_put_contents($this->root . $file, $contents);
+            try {
+                return file_put_contents($this->root . $file, $contents);
+            } catch (\ErrorException $e) {
+                $this->io->writeError('<warning>Failed to write into cache: '.$e->getMessage().'</warning>', true, IOInterface::DEBUG);
+                if (preg_match('{^file_put_contents\(\): Only ([0-9]+) of ([0-9]+) bytes written}', $e->getMessage(), $m)) {
+                    // Remove partial file.
+                    unlink($this->root . $file);
+
+                    $message = sprintf(
+                        '<warning>Writing %1$s into cache failed after %2$u of %3$u bytes written, only %4$u bytes of free space available</warning>',
+                        $this->root . $file,
+                        $m[1],
+                        $m[2],
+                        @disk_free_space($this->root . dirname($file))
+                    );
+
+                    $this->io->writeError($message);
+
+                    return false;
+                }
+
+                throw $e;
+            }
         }
 
         return false;
@@ -98,8 +128,10 @@ class Cache
             $file = preg_replace('{[^'.$this->whitelist.']}i', '-', $file);
             $this->filesystem->ensureDirectoryExists(dirname($this->root . $file));
 
-            if ($this->io->isDebug()) {
-                $this->io->write('Writing '.$this->root . $file.' into cache');
+            if (!file_exists($source)) {
+                $this->io->writeError('<error>'.$source.' does not exist, can not write into cache</error>');
+            } elseif ($this->io->isDebug()) {
+                $this->io->writeError('Writing '.$this->root . $file.' into cache from '.$source);
             }
 
             return copy($source, $this->root . $file);
@@ -115,11 +147,15 @@ class Cache
     {
         $file = preg_replace('{[^'.$this->whitelist.']}i', '-', $file);
         if ($this->enabled && file_exists($this->root . $file)) {
-            touch($this->root . $file);
-
-            if ($this->io->isDebug()) {
-                $this->io->write('Reading '.$this->root . $file.' from cache');
+            try {
+                touch($this->root . $file, filemtime($this->root . $file), time());
+            } catch (\ErrorException $e) {
+                // fallback in case the above failed due to incorrect ownership
+                // see https://github.com/composer/composer/issues/4070
+                Silencer::call('touch', $this->root . $file);
             }
+
+            $this->io->writeError('Reading '.$this->root . $file.' from cache', true, IOInterface::DEBUG);
 
             return copy($this->root . $file, $target);
         }
@@ -129,7 +165,7 @@ class Cache
 
     public function gcIsNecessary()
     {
-       return (!self::$cacheCollected && !mt_rand(0, 50));
+        return (!self::$cacheCollected && !mt_rand(0, 50));
     }
 
     public function remove($file)

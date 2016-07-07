@@ -20,7 +20,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 /**
  * @author Jordi Boggiano <j.boggiano@seld.be>
  */
-class ScriptAliasCommand extends Command
+class ScriptAliasCommand extends BaseCommand
 {
     private $script;
 
@@ -53,12 +53,6 @@ EOT
     protected function execute(InputInterface $input, OutputInterface $output)
     {
         $composer = $this->getComposer();
-
-        // add the bin dir to the PATH to make local binaries of deps usable in scripts
-        $binDir = $composer->getConfig()->get('bin-dir');
-        if (is_dir($binDir)) {
-            putenv('PATH='.realpath($binDir).PATH_SEPARATOR.getenv('PATH'));
-        }
 
         $args = $input->getArguments();
 

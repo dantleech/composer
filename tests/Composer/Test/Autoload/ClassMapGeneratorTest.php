@@ -1,21 +1,29 @@
 <?php
 
 /*
- * This file was copied from the Symfony package.
+ * This file is part of Composer.
  *
- * (c) Fabien Potencier <fabien@symfony.com>
+ * (c) Nils Adermann <naderman@naderman.de>
+ *     Jordi Boggiano <j.boggiano@seld.be>
  *
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
  */
 
+/*
+ * This file is copied from the Symfony package.
+ *
+ * (c) Fabien Potencier <fabien@symfony.com>
+ */
+
 namespace Composer\Test\Autoload;
 
 use Composer\Autoload\ClassMapGenerator;
+use Composer\TestCase;
 use Symfony\Component\Finder\Finder;
 use Composer\Util\Filesystem;
 
-class ClassMapGeneratorTest extends \PHPUnit_Framework_TestCase
+class ClassMapGeneratorTest extends TestCase
 {
     /**
      * @dataProvider getTestCreateMapTests
@@ -27,6 +35,10 @@ class ClassMapGeneratorTest extends \PHPUnit_Framework_TestCase
 
     public function getTestCreateMapTests()
     {
+        if (PHP_VERSION_ID == 50303) {
+            $this->markTestSkipped('Test segfaults on travis 5.3.3 due to ClassMap\LongString');
+        }
+
         $data = array(
             array(__DIR__.'/Fixtures/Namespaced', array(
                 'Namespaced\\Bar' => realpath(__DIR__).'/Fixtures/Namespaced/Bar.inc',
@@ -53,6 +65,7 @@ class ClassMapGeneratorTest extends \PHPUnit_Framework_TestCase
                 'ClassMap\\SomeInterface' => realpath(__DIR__).'/Fixtures/classmap/SomeInterface.php',
                 'ClassMap\\SomeParent'    => realpath(__DIR__).'/Fixtures/classmap/SomeParent.php',
                 'ClassMap\\SomeClass'     => realpath(__DIR__).'/Fixtures/classmap/SomeClass.php',
+                'ClassMap\\LongString'    => realpath(__DIR__).'/Fixtures/classmap/LongString.php',
                 'Foo\\LargeClass'         => realpath(__DIR__).'/Fixtures/classmap/LargeClass.php',
                 'Foo\\LargeGap'           => realpath(__DIR__).'/Fixtures/classmap/LargeGap.php',
                 'Foo\\MissingSpace'       => realpath(__DIR__).'/Fixtures/classmap/MissingSpace.php',
@@ -64,7 +77,7 @@ class ClassMapGeneratorTest extends \PHPUnit_Framework_TestCase
             array(__DIR__.'/Fixtures/template', array()),
         );
 
-        if (version_compare(PHP_VERSION, '5.4', '>=')) {
+        if (PHP_VERSION_ID >= 50400) {
             $data[] = array(__DIR__.'/Fixtures/php5.4', array(
                 'TFoo' => __DIR__.'/Fixtures/php5.4/traits.php',
                 'CFoo' => __DIR__.'/Fixtures/php5.4/traits.php',
@@ -72,6 +85,18 @@ class ClassMapGeneratorTest extends \PHPUnit_Framework_TestCase
                 'Foo\\IBar' => __DIR__.'/Fixtures/php5.4/traits.php',
                 'Foo\\TFooBar' => __DIR__.'/Fixtures/php5.4/traits.php',
                 'Foo\\CBar' => __DIR__.'/Fixtures/php5.4/traits.php',
+            ));
+        }
+        if (PHP_VERSION_ID >= 70000) {
+            $data[] = array(__DIR__.'/Fixtures/php7.0', array(
+                'Dummy\Test\AnonClassHolder' => __DIR__.'/Fixtures/php7.0/anonclass.php',
+            ));
+        }
+        if (defined('HHVM_VERSION') && version_compare(HHVM_VERSION, '3.3', '>=')) {
+            $data[] = array(__DIR__.'/Fixtures/hhvm3.3', array(
+                'FooEnum' => __DIR__.'/Fixtures/hhvm3.3/HackEnum.php',
+                'Foo\BarEnum' => __DIR__.'/Fixtures/hhvm3.3/NamespacedHackEnum.php',
+                'GenericsClass' => __DIR__.'/Fixtures/hhvm3.3/Generics.php',
             ));
         }
 
@@ -93,7 +118,7 @@ class ClassMapGeneratorTest extends \PHPUnit_Framework_TestCase
 
     /**
      * @expectedException \RuntimeException
-     * @expectedExceptionMessage Could not scan for classes inside
+     * @expectedExceptionMessage does not exist
      */
     public function testFindClassesThrowsWhenFileDoesNotExist()
     {
@@ -108,10 +133,8 @@ class ClassMapGeneratorTest extends \PHPUnit_Framework_TestCase
     {
         $this->checkIfFinderIsAvailable();
 
-        $tempDir = sys_get_temp_dir().'/ComposerTestAmbiguousRefs';
-        if (!is_dir($tempDir.'/other')) {
-            mkdir($tempDir.'/other', 0777, true);
-        }
+        $tempDir = $this->getUniqueTmpDirectory();
+        $this->ensureDirectoryExistsAndClear($tempDir.'/other');
 
         $finder = new Finder();
         $finder->files()->in($tempDir);
@@ -128,7 +151,7 @@ class ClassMapGeneratorTest extends \PHPUnit_Framework_TestCase
         $msg = '';
 
         $io->expects($this->once())
-            ->method('write')
+            ->method('writeError')
             ->will($this->returnCallback(function ($text) use (&$msg) {
                 $msg = $text;
             }));
@@ -152,13 +175,9 @@ class ClassMapGeneratorTest extends \PHPUnit_Framework_TestCase
      */
     public function testUnambiguousReference()
     {
-        $tempDir = sys_get_temp_dir().'/ComposerTestUnambiguousRefs';
-        if (!is_dir($tempDir)) {
-            mkdir($tempDir, 0777, true);
-        }
+        $tempDir = $this->getUniqueTmpDirectory();
 
         file_put_contents($tempDir.'/A.php', "<?php\nclass A {}");
-
         file_put_contents(
             $tempDir.'/B.php',
             "<?php

@@ -12,15 +12,31 @@
 
 namespace Composer;
 
-use Composer\Package\Version\VersionParser;
-use Composer\Package\Package;
+use Composer\Semver\VersionParser;
 use Composer\Package\AliasPackage;
-use Composer\Package\LinkConstraint\VersionConstraint;
+use Composer\Semver\Constraint\Constraint;
 use Composer\Util\Filesystem;
+use Composer\Util\Silencer;
 
 abstract class TestCase extends \PHPUnit_Framework_TestCase
 {
     private static $parser;
+
+    public static function getUniqueTmpDirectory()
+    {
+        $attempts = 5;
+        $root = sys_get_temp_dir();
+
+        do {
+            $unique = $root . DIRECTORY_SEPARATOR . uniqid('composer-test-' . rand(1000, 9000));
+
+            if (!file_exists($unique) && Silencer::call('mkdir', $unique, 0777)) {
+                return realpath($unique);
+            }
+        } while (--$attempts);
+
+        throw new \RuntimeException('Failed to create a unique temporary directory.');
+    }
 
     protected static function getVersionParser()
     {
@@ -33,7 +49,7 @@ abstract class TestCase extends \PHPUnit_Framework_TestCase
 
     protected function getVersionConstraint($operator, $version)
     {
-        $constraint = new VersionConstraint(
+        $constraint = new Constraint(
             $operator,
             self::getVersionParser()->normalize($version)
         );
@@ -57,12 +73,14 @@ abstract class TestCase extends \PHPUnit_Framework_TestCase
         return new AliasPackage($package, $normVersion, $version);
     }
 
-    protected function ensureDirectoryExistsAndClear($directory)
+    protected static function ensureDirectoryExistsAndClear($directory)
     {
         $fs = new Filesystem();
+
         if (is_dir($directory)) {
             $fs->removeDirectory($directory);
         }
+
         mkdir($directory, 0777, true);
     }
 }

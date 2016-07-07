@@ -12,22 +12,21 @@
 
 namespace Composer\Command;
 
-use Composer\DependencyResolver\Pool;
-use Composer\Factory;
 use Composer\Package\CompletePackageInterface;
-use Composer\Package\Loader\InvalidPackageException;
-use Composer\Repository\CompositeRepository;
 use Composer\Repository\RepositoryInterface;
+use Composer\Repository\ArrayRepository;
+use Composer\Repository\RepositoryFactory;
+use Composer\Util\Platform;
+use Composer\Util\ProcessExecutor;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Process\Exception\InvalidArgumentException;
 
 /**
  * @author Robert Schönthal <seroscho@googlemail.com>
  */
-class HomeCommand extends Command
+class HomeCommand extends BaseCommand
 {
     /**
      * {@inheritDoc}
@@ -41,12 +40,14 @@ class HomeCommand extends Command
             ->setDefinition(array(
                 new InputArgument('packages', InputArgument::IS_ARRAY | InputArgument::REQUIRED, 'Package(s) to browse to.'),
                 new InputOption('homepage', 'H', InputOption::VALUE_NONE, 'Open the homepage instead of the repository URL.'),
+                new InputOption('show', 's', InputOption::VALUE_NONE, 'Only show the homepage or repository URL.'),
             ))
             ->setHelp(<<<EOT
-The home command opens a package's repository URL or
+The home command opens or shows a package's repository URL or
 homepage in your default browser.
 
 To open the homepage by default, use -H or --homepage.
+To show instead of open the repository or homepage URL, use -s or --show.
 EOT
             );
     }
@@ -56,61 +57,56 @@ EOT
      */
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-        $repo = $this->initializeRepo($input, $output);
+        $repos = $this->initializeRepos();
+        $io = $this->getIO();
         $return = 0;
 
         foreach ($input->getArgument('packages') as $packageName) {
-            $package = $this->getPackage($repo, $packageName);
+            $handled = false;
+            $packageExists = false;
+            foreach ($repos as $repo) {
+                foreach ($repo->findPackages($packageName) as $package) {
+                    $packageExists = true;
+                    if ($package instanceof CompletePackageInterface && $this->handlePackage($package, $input->getOption('homepage'), $input->getOption('show'))) {
+                        $handled = true;
+                        break 2;
+                    }
+                }
+            }
 
-            if (!$package instanceof CompletePackageInterface) {
+            if (!$packageExists) {
                 $return = 1;
-                $output->writeln('<warning>Package '.$packageName.' not found</warning>');
-
-                continue;
+                $io->writeError('<warning>Package '.$packageName.' not found</warning>');
             }
 
-            $support = $package->getSupport();
-            $url = isset($support['source']) ? $support['source'] : $package->getSourceUrl();
-            if (!$url || $input->getOption('homepage')) {
-                $url = $package->getHomepage();
-            }
-
-            if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            if (!$handled) {
                 $return = 1;
-                $output->writeln('<warning>'.($input->getOption('homepage') ? 'Invalid or missing homepage' : 'Invalid or missing repository URL').' for '.$packageName.'</warning>');
-
-                continue;
+                $io->writeError('<warning>'.($input->getOption('homepage') ? 'Invalid or missing homepage' : 'Invalid or missing repository URL').' for '.$packageName.'</warning>');
             }
-
-            $this->openBrowser($url);
         }
 
         return $return;
     }
 
-    /**
-     * finds a package by name
-     *
-     * @param  RepositoryInterface $repos
-     * @param  string              $name
-     * @return CompletePackageInterface
-     */
-    protected function getPackage(RepositoryInterface $repos, $name)
+    private function handlePackage(CompletePackageInterface $package, $showHomepage, $showOnly)
     {
-        $name = strtolower($name);
-        $pool = new Pool('dev');
-        $pool->addRepository($repos);
-        $matches = $pool->whatProvides($name);
-
-        foreach ($matches as $index => $package) {
-            // skip providers/replacers
-            if ($package->getName() !== $name) {
-                unset($matches[$index]);
-                continue;
-            }
-
-            return $package;
+        $support = $package->getSupport();
+        $url = isset($support['source']) ? $support['source'] : $package->getSourceUrl();
+        if (!$url || $showHomepage) {
+            $url = $package->getHomepage();
         }
+
+        if (!$url || !filter_var($url, FILTER_VALIDATE_URL)) {
+            return false;
+        }
+
+        if ($showOnly) {
+            $this->getIO()->write(sprintf('<info>%s</info>', $url));
+        } else {
+            $this->openBrowser($url);
+        }
+
+        return true;
     }
 
     /**
@@ -120,9 +116,9 @@ EOT
      */
     private function openBrowser($url)
     {
-        $url = escapeshellarg($url);
+        $url = ProcessExecutor::escape($url);
 
-        if (defined('PHP_WINDOWS_VERSION_MAJOR')) {
+        if (Platform::isWindows()) {
             return passthru('start "web" explorer "' . $url . '"');
         }
 
@@ -134,29 +130,29 @@ EOT
         } elseif (0 === $osx) {
             passthru('open ' . $url);
         } else {
-            $this->getIO()->write('no suitable browser opening command found, open yourself: ' . $url);
+            $this->getIO()->writeError('no suitable browser opening command found, open yourself: ' . $url);
         }
     }
 
     /**
-     * initializes the repo
+     * Initializes repositories
      *
-     * @param InputInterface  $input
-     * @param OutputInterface $output
-     * @return CompositeRepository
+     * Returns an array of repos in order they should be checked in
+     *
+     * @return RepositoryInterface[]
      */
-    private function initializeRepo(InputInterface $input, OutputInterface $output)
+    private function initializeRepos()
     {
         $composer = $this->getComposer(false);
 
         if ($composer) {
-            $repo = new CompositeRepository($composer->getRepositoryManager()->getRepositories());
-        } else {
-            $defaultRepos = Factory::createDefaultRepositories($this->getIO());
-            $repo = new CompositeRepository($defaultRepos);
+            return array_merge(
+                array(new ArrayRepository(array($composer->getPackage()))), // root package
+                array($composer->getRepositoryManager()->getLocalRepository()), // installed packages
+                $composer->getRepositoryManager()->getRepositories() // remotes
+            );
         }
 
-        return $repo;
+        return RepositoryFactory::defaultRepos($this->getIO());
     }
-
 }

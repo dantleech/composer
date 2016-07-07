@@ -10,6 +10,10 @@
  * file that was distributed with this source code.
  */
 
+use Composer\IO\WorkTracker\ContextWorkTracker;
+use Composer\IO\WorkTracker\Formatter\EmptyFormatter;
+use Composer\IO\WorkTracker\UnboundWorkTracker;
+
 error_reporting(E_ALL);
 
 if (function_exists('date_default_timezone_set') && function_exists('date_default_timezone_get')) {

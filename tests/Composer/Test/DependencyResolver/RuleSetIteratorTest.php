@@ -27,11 +27,11 @@ class RuleSetIteratorTest extends \PHPUnit_Framework_TestCase
 
         $this->rules = array(
             RuleSet::TYPE_JOB => array(
-                new Rule($this->pool, array(), 'job1', null),
-                new Rule($this->pool, array(), 'job2', null),
+                new Rule(array(), Rule::RULE_JOB_INSTALL, null),
+                new Rule(array(), Rule::RULE_JOB_INSTALL, null),
             ),
             RuleSet::TYPE_LEARNED => array(
-                new Rule($this->pool, array(), 'update1', null),
+                new Rule(array(), Rule::RULE_INTERNAL_ALLOW_UPDATE, null),
             ),
             RuleSet::TYPE_PACKAGE => array(),
         );

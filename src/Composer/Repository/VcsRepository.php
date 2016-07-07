@@ -13,6 +13,7 @@
 namespace Composer\Repository;
 
 use Composer\Downloader\TransportException;
+use Composer\IO\WorkTracker\WorkTrackerInterface;
 use Composer\Repository\Vcs\VcsDriverInterface;
 use Composer\Package\Version\VersionParser;
 use Composer\Package\Loader\ArrayLoader;
@@ -26,28 +27,35 @@ use Composer\Config;
 /**
  * @author Jordi Boggiano <j.boggiano@seld.be>
  */
-class VcsRepository extends ArrayRepository
+class VcsRepository extends ArrayRepository implements ConfigurableRepositoryInterface
 {
     protected $url;
     protected $packageName;
     protected $verbose;
     protected $io;
+    protected $workTracker;
     protected $config;
     protected $versionParser;
     protected $type;
     protected $loader;
     protected $repoConfig;
     protected $branchErrorOccurred = false;
+    private $drivers;
+    /** @var VcsDriverInterface */
+    private $driver;
 
     public function __construct(array $repoConfig, IOInterface $io, Config $config, EventDispatcher $dispatcher = null, array $drivers = null)
     {
+        parent::__construct();
         $this->drivers = $drivers ?: array(
             'github'        => 'Composer\Repository\Vcs\GitHubDriver',
+            'gitlab'        => 'Composer\Repository\Vcs\GitLabDriver',
             'git-bitbucket' => 'Composer\Repository\Vcs\GitBitbucketDriver',
             'git'           => 'Composer\Repository\Vcs\GitDriver',
             'hg-bitbucket'  => 'Composer\Repository\Vcs\HgBitbucketDriver',
             'hg'            => 'Composer\Repository\Vcs\HgDriver',
             'perforce'      => 'Composer\Repository\Vcs\PerforceDriver',
+            'fossil'        => 'Composer\Repository\Vcs\FossilDriver',
             // svn must be last because identifying a subversion server for sure is practically impossible
             'svn'           => 'Composer\Repository\Vcs\SvnDriver',
         );
@@ -55,7 +63,7 @@ class VcsRepository extends ArrayRepository
         $this->url = $repoConfig['url'];
         $this->io = $io;
         $this->type = isset($repoConfig['type']) ? $repoConfig['type'] : 'vcs';
-        $this->verbose = $io->isVerbose();
+        $this->verbose = $io->isVeryVerbose();
         $this->config = $config;
         $this->repoConfig = $repoConfig;
     }
@@ -72,29 +80,33 @@ class VcsRepository extends ArrayRepository
 
     public function getDriver()
     {
+        if ($this->driver) {
+            return $this->driver;
+        }
+
         if (isset($this->drivers[$this->type])) {
             $class = $this->drivers[$this->type];
-            $driver = new $class($this->repoConfig, $this->io, $this->config);
-            $driver->initialize();
+            $this->driver = new $class($this->repoConfig, $this->io, $this->config);
+            $this->driver->initialize();
 
-            return $driver;
+            return $this->driver;
         }
 
         foreach ($this->drivers as $driver) {
             if ($driver::supports($this->io, $this->config, $this->url)) {
-                $driver = new $driver($this->repoConfig, $this->io, $this->config);
-                $driver->initialize();
+                $this->driver = new $driver($this->repoConfig, $this->io, $this->config);
+                $this->driver->initialize();
 
-                return $driver;
+                return $this->driver;
             }
         }
 
         foreach ($this->drivers as $driver) {
             if ($driver::supports($this->io, $this->config, $this->url, true)) {
-                $driver = new $driver($this->repoConfig, $this->io, $this->config);
-                $driver->initialize();
+                $this->driver = new $driver($this->repoConfig, $this->io, $this->config);
+                $this->driver->initialize();
 
-                return $driver;
+                return $this->driver;
             }
         }
     }
@@ -127,33 +139,40 @@ class VcsRepository extends ArrayRepository
             }
         } catch (\Exception $e) {
             if ($verbose) {
-                $this->io->write('<error>Skipped parsing '.$driver->getRootIdentifier().', '.$e->getMessage().'</error>');
+                $this->io->writeError('<error>Skipped parsing '.$driver->getRootIdentifier().', '.$e->getMessage().'</error>');
             }
         }
 
-        foreach ($driver->getTags() as $tag => $identifier) {
+        $tags = $driver->getTags();
+        $workTracker = $this->io->getWorkTracker();
+        $workTracker->createBound('Reading tags from ' . $this->url, count($tags));
+        foreach ($tags as $tag => $identifier) {
             $msg = 'Reading composer.json of <info>' . ($this->packageName ?: $this->url) . '</info> (<comment>' . $tag . '</comment>)';
+            $workTracker->ping();
+            $workTracker->createUnbound($msg);
             if ($verbose) {
-                $this->io->write($msg);
-            } else {
-                $this->io->overwrite($msg, false);
-            }
+                $this->io->writeError($msg);
+            }/* else {
+                $this->io->overwriteError($msg, false);
+            }*/
 
             // strip the release- prefix from tags if present
             $tag = str_replace('release-', '', $tag);
 
             if (!$parsedTag = $this->validateTag($tag)) {
                 if ($verbose) {
-                    $this->io->write('<warning>Skipped tag '.$tag.', invalid tag name</warning>');
+                    $this->io->writeError('<warning>Skipped tag '.$tag.', invalid tag name</warning>');
                 }
+                $workTracker->complete();
                 continue;
             }
 
             try {
                 if (!$data = $driver->getComposerInformation($identifier)) {
                     if ($verbose) {
-                        $this->io->write('<warning>Skipped tag '.$tag.', no composer file</warning>');
+                        $this->io->writeError('<warning>Skipped tag '.$tag.', no composer file</warning>');
                     }
+                    $workTracker->complete();
                     continue;
                 }
 
@@ -173,48 +192,58 @@ class VcsRepository extends ArrayRepository
                 // broken package, version doesn't match tag
                 if ($data['version_normalized'] !== $parsedTag) {
                     if ($verbose) {
-                        $this->io->write('<warning>Skipped tag '.$tag.', tag ('.$parsedTag.') does not match version ('.$data['version_normalized'].') in composer.json</warning>');
+                        $this->io->writeError('<warning>Skipped tag '.$tag.', tag ('.$parsedTag.') does not match version ('.$data['version_normalized'].') in composer.json</warning>');
                     }
+                    $workTracker->complete();
                     continue;
                 }
 
                 if ($verbose) {
-                    $this->io->write('Importing tag '.$tag.' ('.$data['version_normalized'].')');
+                    $this->io->writeError('Importing tag '.$tag.' ('.$data['version_normalized'].')');
                 }
 
                 $this->addPackage($this->loader->load($this->preProcess($driver, $data, $identifier)));
             } catch (\Exception $e) {
                 if ($verbose) {
-                    $this->io->write('<warning>Skipped tag '.$tag.', '.($e instanceof TransportException ? 'no composer file was found' : $e->getMessage()).'</warning>');
+                    $this->io->writeError('<warning>Skipped tag '.$tag.', '.($e instanceof TransportException ? 'no composer file was found' : $e->getMessage()).'</warning>');
                 }
+                $workTracker->complete();
                 continue;
             }
+            $workTracker->complete();
         }
+        $workTracker->complete();
 
-        if (!$verbose) {
-            $this->io->overwrite('', false);
-        }
+        /*if (!$verbose) {
+            $this->io->overwriteError('', false);
+        }*/
 
-        foreach ($driver->getBranches() as $branch => $identifier) {
+        $branches = $driver->getBranches();
+        $workTracker->createBound('Reading branches from ' . $this->url, count($branches));
+        foreach ($branches as $branch => $identifier) {
             $msg = 'Reading composer.json of <info>' . ($this->packageName ?: $this->url) . '</info> (<comment>' . $branch . '</comment>)';
-            if ($verbose) {
-                $this->io->write($msg);
+            $workTracker->ping();
+            $workTracker->createUnbound($msg);
+            /*if ($verbose) {
+                $this->io->writeError($msg);
             } else {
-                $this->io->overwrite($msg, false);
-            }
+                $this->io->overwriteError($msg, false);
+            }*/
 
             if (!$parsedBranch = $this->validateBranch($branch)) {
                 if ($verbose) {
-                    $this->io->write('<warning>Skipped branch '.$branch.', invalid name</warning>');
+                    $this->io->writeError('<warning>Skipped branch '.$branch.', invalid name</warning>');
                 }
+                $workTracker->complete();
                 continue;
             }
 
             try {
                 if (!$data = $driver->getComposerInformation($identifier)) {
                     if ($verbose) {
-                        $this->io->write('<warning>Skipped branch '.$branch.', no composer file</warning>');
+                        $this->io->writeError('<warning>Skipped branch '.$branch.', no composer file</warning>');
                     }
+                    $workTracker->complete();
                     continue;
                 }
 
@@ -226,11 +255,12 @@ class VcsRepository extends ArrayRepository
                 if ('dev-' === substr($parsedBranch, 0, 4) || '9999999-dev' === $parsedBranch) {
                     $data['version'] = 'dev-' . $data['version'];
                 } else {
-                    $data['version'] = preg_replace('{(\.9{7})+}', '.x', $parsedBranch);
+                    $prefix = substr($branch, 0, 1) === 'v' ? 'v' : '';
+                    $data['version'] = $prefix . preg_replace('{(\.9{7})+}', '.x', $parsedBranch);
                 }
 
                 if ($verbose) {
-                    $this->io->write('Importing branch '.$branch.' ('.$data['version'].')');
+                    $this->io->writeError('Importing branch '.$branch.' ('.$data['version'].')');
                 }
 
                 $packageData = $this->preProcess($driver, $data, $identifier);
@@ -241,31 +271,35 @@ class VcsRepository extends ArrayRepository
                 $this->addPackage($package);
             } catch (TransportException $e) {
                 if ($verbose) {
-                    $this->io->write('<warning>Skipped branch '.$branch.', no composer file was found</warning>');
+                    $this->io->writeError('<warning>Skipped branch '.$branch.', no composer file was found</warning>');
                 }
+                $workTracker->complete();
                 continue;
             } catch (\Exception $e) {
                 if (!$verbose) {
-                    $this->io->write('');
+                    $this->io->writeError('');
                 }
                 $this->branchErrorOccurred = true;
-                $this->io->write('<error>Skipped branch '.$branch.', '.$e->getMessage().'</error>');
-                $this->io->write('');
+                $this->io->writeError('<error>Skipped branch '.$branch.', '.$e->getMessage().'</error>');
+                $this->io->writeError('');
+                $workTracker->complete();
                 continue;
             }
+            $workTracker->complete();
         }
+        $workTracker->complete();
         $driver->cleanup();
 
-        if (!$verbose) {
-            $this->io->overwrite('', false);
-        }
+        /*if (!$verbose) {
+            $this->io->overwriteError('', false);
+        }*/
 
         if (!$this->getPackages()) {
             throw new InvalidRepositoryException('No valid composer.json was found in any branch or tag of '.$this->url.', could not load a package from it.');
         }
     }
 
-    private function preProcess(VcsDriverInterface $driver, array $data, $identifier)
+    protected function preProcess(VcsDriverInterface $driver, array $data, $identifier)
     {
         // keep the name of the main identifier for all packages
         $data['name'] = $this->packageName ?: $data['name'];

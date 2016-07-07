@@ -13,6 +13,7 @@
 namespace Composer\Command;
 
 use Composer\Installer;
+use Composer\IO\WorkTracker\Formatter\EmptyFormatter;
 use Composer\Plugin\CommandEvent;
 use Composer\Plugin\PluginEvents;
 use Symfony\Component\Console\Input\InputInterface;
@@ -31,7 +32,7 @@ use Composer\IO\WorkTracker\Formatter\MultiProgressFormatter;
  * @author Konstantin Kudryashov <ever.zet@gmail.com>
  * @author Nils Adermann <naderman@naderman.de>
  */
-class InstallCommand extends Command
+class InstallCommand extends BaseCommand
 {
     protected function configure()
     {
@@ -44,13 +45,15 @@ class InstallCommand extends Command
                 new InputOption('dry-run', null, InputOption::VALUE_NONE, 'Outputs the operations but will not execute anything (implicitly enables --verbose).'),
                 new InputOption('dev', null, InputOption::VALUE_NONE, 'Enables installation of require-dev packages (enabled by default, only present for BC).'),
                 new InputOption('no-dev', null, InputOption::VALUE_NONE, 'Disables installation of require-dev packages.'),
-                new InputOption('no-plugins', null, InputOption::VALUE_NONE, 'Disables all plugins.'),
                 new InputOption('no-custom-installers', null, InputOption::VALUE_NONE, 'DEPRECATED: Use no-plugins instead.'),
+                new InputOption('no-autoloader', null, InputOption::VALUE_NONE, 'Skips autoloader generation'),
                 new InputOption('no-scripts', null, InputOption::VALUE_NONE, 'Skips the execution of all scripts defined in composer.json file.'),
                 new InputOption('no-progress', null, InputOption::VALUE_NONE, 'Do not output download progress.'),
+                new InputOption('no-suggest', null, InputOption::VALUE_NONE, 'Do not show package suggestions.'),
                 new InputOption('verbose', 'v|vv|vvv', InputOption::VALUE_NONE, 'Shows more details including new commits pulled in when updating packages.'),
                 new InputOption('optimize-autoloader', 'o', InputOption::VALUE_NONE, 'Optimize autoloader during autoloader dump'),
-                new InputOption('pretty', null, InputOption::VALUE_REQUIRED, 'Format for progress, values <info>multi</info>, <info>debug</info>', 'multi'),
+                new InputOption('classmap-authoritative', 'a', InputOption::VALUE_NONE, 'Autoload classes from the classmap only. Implicitly enables `--optimize-autoloader`.'),
+                new InputOption('ignore-platform-reqs', null, InputOption::VALUE_NONE, 'Ignore platform requirements (php & ext- packages).'),
                 new InputArgument('packages', InputArgument::IS_ARRAY | InputArgument::OPTIONAL, 'Should not be provided, use composer require instead to add a given package to composer.json.'),
             ))
             ->setHelp(<<<EOT
@@ -68,35 +71,30 @@ EOT
 
     protected function execute(InputInterface $input, OutputInterface $output)
     {
+        $io = $this->getIO();
+
         if ($args = $input->getArgument('packages')) {
-            $output->writeln('<error>Invalid argument '.implode(' ', $args).'. Use "composer require '.implode(' ', $args).'" instead to add packages to your composer.json.</error>');
+            $io->writeError('<error>Invalid argument '.implode(' ', $args).'. Use "composer require '.implode(' ', $args).'" instead to add packages to your composer.json.</error>');
 
             return 1;
         }
 
         if ($input->getOption('no-custom-installers')) {
-            $output->writeln('<warning>You are using the deprecated option "no-custom-installers". Use "no-plugins" instead.</warning>');
+            $io->writeError('<warning>You are using the deprecated option "no-custom-installers". Use "no-plugins" instead.</warning>');
             $input->setOption('no-plugins', true);
         }
 
-        $pretty = $input->getOption('pretty');
+        if ($input->getOption('dev')) {
+            $io->writeError('<warning>You are using the deprecated option "dev". Dev packages are installed by default now.</warning>');
+        }
 
         $composer = $this->getComposer(true, $input->getOption('no-plugins'));
         $composer->getDownloadManager()->setOutputProgress(!$input->getOption('no-progress'));
-        $io = $this->getIO();
 
         $commandEvent = new CommandEvent(PluginEvents::COMMAND, 'install', $input, $output);
         $composer->getEventDispatcher()->dispatch($commandEvent->getName(), $commandEvent);
 
-        if ($pretty == 'debug') {
-            $workTrackerFormatter = new DebugFormatter($output);
-        } else {
-            $workTrackerFormatter = new MultiProgressFormatter($output);
-        }
-        $masterWorkTracker = new UnboundWorkTracker('Composer Install', $workTrackerFormatter);
-        $workTracker = new ContextWorkTracker($masterWorkTracker);
-
-        $install = Installer::create($io, $composer, $workTracker);
+        $install = Installer::create($io, $composer);
 
         $preferSource = false;
         $preferDist = false;
@@ -121,6 +119,7 @@ EOT
         }
 
         $optimize = $input->getOption('optimize-autoloader') || $config->get('optimize-autoloader');
+        $authoritative = $input->getOption('classmap-authoritative') || $config->get('classmap-authoritative');
 
         $install
             ->setDryRun($input->getOption('dry-run'))
@@ -128,8 +127,12 @@ EOT
             ->setPreferSource($preferSource)
             ->setPreferDist($preferDist)
             ->setDevMode(!$input->getOption('no-dev'))
+            ->setDumpAutoloader(!$input->getOption('no-autoloader'))
             ->setRunScripts(!$input->getOption('no-scripts'))
+            ->setSkipSuggest($input->getOption('no-suggest'))
             ->setOptimizeAutoloader($optimize)
+            ->setClassMapAuthoritative($authoritative)
+            ->setIgnorePlatformRequirements($input->getOption('ignore-platform-reqs'))
         ;
 
         if ($input->getOption('no-plugins')) {
@@ -137,5 +140,31 @@ EOT
         }
 
         return $install->run();
+    }
+
+    public static function getWorkTrackerHeuristics() {
+        // these are all just estimations and may be adjusted
+        // there is quite possibly missing steps
+        return array(
+            'weights' => array(
+                'Loading Composer' => 2,
+                'Running scripts for `command`' => 1,
+                'Running scripts for `pre-update-cmd`' => 1,
+                'Running scripts for `pre-install-cmd`' => 1,
+                'Running scripts for `pre-dependencies-solving`' => 1,
+                'Running scripts for `post-dependencies-solving`' => 1,
+                'Removing unstable packages from the local repository (if they don\'t match the current stablitity settings)' => 1,
+                'Generating autoload files' => 5,
+                'Running scripts for `post-install-cmd`' => 5,
+                'Consolidating changes' => 5,
+
+                'Loading composer repositories with package information' => 1,
+                'Installing dependencies (including require-dev) from lock file' => 1,
+                'Installing dependencies from lock file' => 1,
+                'Solving dependencies' => 10,
+                'Processing dev packages' => 2,
+                'Installing' => 68
+            )
+        );
     }
 }

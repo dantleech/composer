@@ -12,6 +12,7 @@
 
 namespace Composer\IO;
 
+use Composer\IO\WorkTracker\WorkTrackerInterface;
 use Symfony\Component\Console\Output\StreamOutput;
 use Symfony\Component\Console\Formatter\OutputFormatterInterface;
 use Symfony\Component\Console\Input\StringInput;
@@ -26,15 +27,20 @@ class BufferIO extends ConsoleIO
      * @param string                   $input
      * @param int                      $verbosity
      * @param OutputFormatterInterface $formatter
+     * @param WorkTrackerInterface     $workTracker
      */
-    public function __construct($input = '', $verbosity = null, OutputFormatterInterface $formatter = null)
-    {
+    public function __construct(
+        $input = '',
+        $verbosity = StreamOutput::VERBOSITY_NORMAL,
+        OutputFormatterInterface $formatter = null,
+        WorkTrackerInterface $workTracker
+    ) {
         $input = new StringInput($input);
         $input->setInteractive(false);
 
-        $output = new StreamOutput(fopen('php://memory', 'rw'), $verbosity === null ? StreamOutput::VERBOSITY_NORMAL : $verbosity, !empty($formatter), $formatter);
+        $output = new StreamOutput(fopen('php://memory', 'rw'), $verbosity, $formatter ? $formatter->isDecorated() : false, $formatter);
 
-        parent::__construct($input, $output, new HelperSet(array()));
+        parent::__construct($input, $output, new HelperSet(array()), $workTracker);
     }
 
     public function getOutput()

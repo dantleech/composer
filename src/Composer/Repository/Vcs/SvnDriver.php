@@ -27,6 +27,9 @@ use Composer\Downloader\TransportException;
  */
 class SvnDriver extends VcsDriver
 {
+    /**
+     * @var Cache
+     */
     protected $cache;
     protected $baseUrl;
     protected $tags;
@@ -38,6 +41,7 @@ class SvnDriver extends VcsDriver
     protected $branchesPath = 'branches';
     protected $tagsPath     = 'tags';
     protected $packagePath   = '';
+    protected $cacheCredentials = true;
 
     /**
      * @var \Composer\Util\Svn
@@ -61,6 +65,9 @@ class SvnDriver extends VcsDriver
         }
         if (isset($this->repoConfig['tags-path'])) {
             $this->tagsPath = $this->repoConfig['tags-path'];
+        }
+        if (array_key_exists('svn-cache-credentials', $this->repoConfig)) {
+            $this->cacheCredentials = (bool) $this->repoConfig['svn-cache-credentials'];
         }
         if (isset($this->repoConfig['package-path'])) {
             $this->packagePath = '/' . trim($this->repoConfig['package-path'], '/');
@@ -141,7 +148,7 @@ class SvnDriver extends VcsDriver
 
             $composer = JsonFile::parseJson($output, $this->baseUrl . $resource . $rev);
 
-            if (!isset($composer['time'])) {
+            if (empty($composer['time'])) {
                 $output = $this->execute('svn info', $this->baseUrl . $path . $rev);
                 foreach ($this->process->splitLines($output) as $line) {
                     if ($line && preg_match('{^Last Changed Date: ([^(]+)}', $line, $match)) {
@@ -307,6 +314,7 @@ class SvnDriver extends VcsDriver
     {
         if (null === $this->util) {
             $this->util = new SvnUtil($this->baseUrl, $this->io, $this->config, $this->process);
+            $this->util->setCacheCredentials($this->cacheCredentials);
         }
 
         try {

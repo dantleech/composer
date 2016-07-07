@@ -12,9 +12,12 @@
 
 namespace Composer\Repository;
 
+use Composer\Config;
+use Composer\Package\PackageInterface;
 use Composer\Package\CompletePackage;
 use Composer\Package\Version\VersionParser;
 use Composer\Plugin\PluginInterface;
+use Composer\Util\Silencer;
 
 /**
  * @author Jordi Boggiano <j.boggiano@seld.be>
@@ -23,17 +26,49 @@ class PlatformRepository extends ArrayRepository
 {
     const PLATFORM_PACKAGE_REGEX = '{^(?:php(?:-64bit)?|hhvm|(?:ext|lib)-[^/]+)$}i';
 
+    /**
+     * Defines overrides so that the platform can be mocked
+     *
+     * Should be an array of package name => version number mappings
+     *
+     * @var array
+     */
+    private $overrides = array();
+
+    public function __construct(array $packages = array(), array $overrides = array())
+    {
+        foreach ($overrides as $name => $version) {
+            $this->overrides[strtolower($name)] = array('name' => $name, 'version' => $version);
+        }
+        parent::__construct($packages);
+    }
+
     protected function initialize()
     {
         parent::initialize();
 
         $versionParser = new VersionParser();
 
+        // Add each of the override versions as options.
+        // Later we might even replace the extensions instead.
+        foreach ($this->overrides as $override) {
+            // Check that it's a platform package.
+            if (!preg_match(self::PLATFORM_PACKAGE_REGEX, $override['name'])) {
+                throw new \InvalidArgumentException('Invalid platform package name in config.platform: '.$override['name']);
+            }
+
+            $version = $versionParser->normalize($override['version']);
+            $package = new CompletePackage($override['name'], $version, $override['version']);
+            $package->setDescription('Package overridden via config.platform');
+            $package->setExtra(array('config.platform' => true));
+            parent::addPackage($package);
+        }
+
         $prettyVersion = PluginInterface::PLUGIN_API_VERSION;
         $version = $versionParser->normalize($prettyVersion);
         $composerPluginApi = new CompletePackage('composer-plugin-api', $version, $prettyVersion);
         $composerPluginApi->setDescription('The Composer Plugin API');
-        parent::addPackage($composerPluginApi);
+        $this->addPackage($composerPluginApi);
 
         try {
             $prettyVersion = PHP_VERSION;
@@ -45,12 +80,19 @@ class PlatformRepository extends ArrayRepository
 
         $php = new CompletePackage('php', $version, $prettyVersion);
         $php->setDescription('The PHP interpreter');
-        parent::addPackage($php);
+        $this->addPackage($php);
 
         if (PHP_INT_SIZE === 8) {
             $php64 = new CompletePackage('php-64bit', $version, $prettyVersion);
-            $php64->setDescription('The PHP interpreter (64bit)');
-            parent::addPackage($php64);
+            $php64->setDescription('The PHP interpreter, 64bit');
+            $this->addPackage($php64);
+        }
+
+        // The AF_INET6 constant is only defined if ext-sockets is available but IPv6 support might still be available.
+        if (defined('AF_INET6') || (function_exists('inet_pton') && Silencer::call('inet_pton', '::') !== false)) {
+            $phpIpv6 = new CompletePackage('ext-network-ipv6', $version, $prettyVersion);
+            $phpIpv6->setDescription('PHP IPv6 support');
+            $this->addPackage($phpIpv6);
         }
 
         $loadedExtensions = get_loaded_extensions();
@@ -60,20 +102,26 @@ class PlatformRepository extends ArrayRepository
             if (in_array($name, array('standard', 'Core'))) {
                 continue;
             }
+            $extraDescription = null;
 
             $reflExt = new \ReflectionExtension($name);
             try {
                 $prettyVersion = $reflExt->getVersion();
                 $version = $versionParser->normalize($prettyVersion);
             } catch (\UnexpectedValueException $e) {
-                $prettyVersion = '0';
+                $extraDescription = ' (actual version: '.$prettyVersion.')';
+                if (preg_match('{^(\d+\.\d+\.\d+(?:\.\d+)?)}', $prettyVersion, $match)) {
+                    $prettyVersion = $match[1];
+                } else {
+                    $prettyVersion = '0';
+                }
                 $version = $versionParser->normalize($prettyVersion);
             }
 
             $packageName = $this->buildPackageName($name);
             $ext = new CompletePackage($packageName, $version, $prettyVersion);
-            $ext->setDescription('The '.$name.' PHP extension');
-            parent::addPackage($ext);
+            $ext->setDescription('The '.$name.' PHP extension' . $extraDescription);
+            $this->addPackage($ext);
         }
 
         // Another quick loop, just for possible libraries
@@ -81,6 +129,7 @@ class PlatformRepository extends ArrayRepository
         // relying on them.
         foreach ($loadedExtensions as $name) {
             $prettyVersion = null;
+            $description = 'The '.$name.' PHP library';
             switch ($name) {
                 case 'curl':
                     $curlVersion = curl_version();
@@ -113,9 +162,27 @@ class PlatformRepository extends ArrayRepository
                     break;
 
                 case 'openssl':
-                    $prettyVersion = preg_replace_callback('{^(?:OpenSSL\s*)?([0-9.]+)([a-z]?).*}', function ($match) {
-                        return $match[1] . (empty($match[2]) ? '' : '.'.(ord($match[2]) - 96));
+                    $prettyVersion = preg_replace_callback('{^(?:OpenSSL\s*)?([0-9.]+)([a-z]*).*}', function ($match) {
+                        if (empty($match[2])) {
+                            return $match[1];
+                        }
+
+                        // OpenSSL versions add another letter when they reach Z.
+                        // e.g. OpenSSL 0.9.8zh 3 Dec 2015
+
+                        if (!preg_match('{^z*[a-z]$}', $match[2])) {
+                            // 0.9.8abc is garbage
+                            return 0;
+                        }
+
+                        $len = strlen($match[2]);
+                        $patchVersion = ($len - 1) * 26; // All Z
+                        $patchVersion += ord($match[2][$len - 1]) - 96;
+
+                        return $match[1].'.'.$patchVersion;
                     }, OPENSSL_VERSION_TEXT);
+
+                    $description = OPENSSL_VERSION_TEXT;
                     break;
 
                 case 'pcre':
@@ -142,8 +209,8 @@ class PlatformRepository extends ArrayRepository
             }
 
             $lib = new CompletePackage('lib-'.$name, $version, $prettyVersion);
-            $lib->setDescription('The '.$name.' PHP library');
-            parent::addPackage($lib);
+            $lib->setDescription($description);
+            $this->addPackage($lib);
         }
 
         if (defined('HHVM_VERSION')) {
@@ -157,8 +224,23 @@ class PlatformRepository extends ArrayRepository
 
             $hhvm = new CompletePackage('hhvm', $version, $prettyVersion);
             $hhvm->setDescription('The HHVM Runtime (64bit)');
-            parent::addPackage($hhvm);
+            $this->addPackage($hhvm);
         }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function addPackage(PackageInterface $package)
+    {
+        // Skip if overridden
+        if (isset($this->overrides[strtolower($package->getName())])) {
+            $overrider = $this->findPackage($package->getName(), '*');
+            $overrider->setDescription($overrider->getDescription().' (actual: '.$package->getPrettyVersion().')');
+
+            return;
+        }
+        parent::addPackage($package);
     }
 
     private function buildPackageName($name)

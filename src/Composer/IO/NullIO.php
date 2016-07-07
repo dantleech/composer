@@ -11,6 +11,10 @@
  */
 
 namespace Composer\IO;
+use Composer\IO\WorkTracker\ContextWorkTracker;
+use Composer\IO\WorkTracker\Formatter\EmptyFormatter;
+use Composer\IO\WorkTracker\UnboundWorkTracker;
+use Composer\IO\WorkTracker\WorkTrackerInterface;
 
 /**
  * IOInterface that is not interactive and never writes the output
@@ -19,6 +23,13 @@ namespace Composer\IO;
  */
 class NullIO extends BaseIO
 {
+
+    protected $workTracker;
+
+    public function __construct() {
+        $this->workTracker = new ContextWorkTracker(new UnboundWorkTracker('Null', new EmptyFormatter()));
+    }
+
     /**
      * {@inheritDoc}
      */
@@ -62,14 +73,28 @@ class NullIO extends BaseIO
     /**
      * {@inheritDoc}
      */
-    public function write($messages, $newline = true)
+    public function write($messages, $newline = true, $verbosity = self::NORMAL)
     {
     }
 
     /**
      * {@inheritDoc}
      */
-    public function overwrite($messages, $newline = true, $size = 80)
+    public function writeError($messages, $newline = true, $verbosity = self::NORMAL)
+    {
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function overwrite($messages, $newline = true, $size = 80, $verbosity = self::NORMAL)
+    {
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function overwriteError($messages, $newline = true, $size = 80, $verbosity = self::NORMAL)
     {
     }
 
@@ -103,5 +128,29 @@ class NullIO extends BaseIO
     public function askAndHideAnswer($question)
     {
         return null;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getWorkTracker()
+    {
+        return $this->workTracker;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function setWorkTracker(WorkTrackerInterface $workTracker)
+    {
+        $this->workTracker = new ContextWorkTracker($workTracker);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function select($question, $choices, $default, $attempts = false, $errorMessage = 'Value "%s" is invalid', $multiselect = false)
+    {
+        return $default;
     }
 }

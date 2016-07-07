@@ -39,7 +39,7 @@ class ContextWorkTracker implements WorkTrackerInterface
      */
     public function getTitle()
     {
-        return $this->workTracker->title;
+        return $this->workTracker->getTitle();
     }
 
     /**

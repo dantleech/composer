@@ -14,26 +14,27 @@ namespace Composer\Test\Mock;
 use Composer\Composer;
 use Composer\Config;
 use Composer\Factory;
-use Composer\Repository;
 use Composer\Repository\RepositoryManager;
+use Composer\Repository\WritableRepositoryInterface;
 use Composer\Installer;
 use Composer\IO\IOInterface;
+use Composer\TestCase;
 
 class FactoryMock extends Factory
 {
-    public static function createConfig(IOInterface $io = null)
+    public static function createConfig(IOInterface $io = null, $cwd = null)
     {
-        $config = new Config();
+        $config = new Config(true, $cwd);
 
         $config->merge(array(
-            'config' => array('home' => sys_get_temp_dir().'/composer-test'),
+            'config' => array('home' => TestCase::getUniqueTmpDirectory()),
             'repositories' => array('packagist' => false),
         ));
 
         return $config;
     }
 
-    protected function addLocalRepository(RepositoryManager $rm, $vendorDir)
+    protected function addLocalRepository(IOInterface $io, RepositoryManager $rm, $vendorDir)
     {
     }
 
@@ -46,7 +47,7 @@ class FactoryMock extends Factory
     {
     }
 
-    protected function purgePackages(Repository\RepositoryManager $rm, Installer\InstallationManager $im)
+    protected function purgePackages(WritableRepositoryInterface $repo, Installer\InstallationManager $im)
     {
     }
 }

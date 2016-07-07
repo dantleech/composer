@@ -54,6 +54,9 @@ class JsonFileTest extends \PHPUnit_Framework_TestCase
 
     public function testParseErrorDetectSingleQuotes()
     {
+        if (defined('JSON_PARSER_NOTSTRICT') && version_compare(phpversion('json'), '1.3.9', '<')) {
+            $this->markTestSkipped('jsonc issue, see https://github.com/remicollet/pecl-json-c/issues/23');
+        }
         $json = '{
         \'foo\': "bar"
 }';
@@ -87,7 +90,7 @@ class JsonFileTest extends \PHPUnit_Framework_TestCase
 
     public function testSchemaValidation()
     {
-        $json = new JsonFile(__DIR__.'/../../../../composer.json');
+        $json = new JsonFile(__DIR__.'/Fixtures/composer.json');
         $this->assertTrue($json->validateSchema());
     }
 
@@ -131,21 +134,10 @@ class JsonFileTest extends \PHPUnit_Framework_TestCase
     public function testFormatEmptyArray()
     {
         $data = array('test' => array(), 'test2' => new \stdClass);
-        if (PHP_VERSION_ID < 50429 || (PHP_VERSION_ID >= 50500 && PHP_VERSION_ID < 50513)) {
-            $json = '{
-    "test": [
-
-    ],
-    "test2": {
-
-    }
-}';
-        } else {
-            $json = '{
+        $json = '{
     "test": [],
     "test2": {}
 }';
-        }
         $this->assertJsonFormat($json, $data);
     }
 
@@ -161,7 +153,7 @@ class JsonFileTest extends \PHPUnit_Framework_TestCase
 
     public function testUnicode()
     {
-        if (!function_exists('mb_convert_encoding') && version_compare(PHP_VERSION, '5.4', '<')) {
+        if (!function_exists('mb_convert_encoding') && PHP_VERSION_ID < 50400) {
             $this->markTestSkipped('Test requires the mbstring extension');
         }
 
@@ -175,7 +167,7 @@ class JsonFileTest extends \PHPUnit_Framework_TestCase
 
     public function testOnlyUnicode()
     {
-        if (!function_exists('mb_convert_encoding') && version_compare(PHP_VERSION, '5.4', '<')) {
+        if (!function_exists('mb_convert_encoding') && PHP_VERSION_ID < 50400) {
             $this->markTestSkipped('Test requires the mbstring extension');
         }
 
@@ -220,8 +212,8 @@ class JsonFileTest extends \PHPUnit_Framework_TestCase
     private function expectParseException($text, $json)
     {
         try {
-            JsonFile::parseJson($json);
-            $this->fail();
+            $result = JsonFile::parseJson($json);
+            $this->fail(sprintf("Parsing should have failed but didn't.\nExpected:\n\"%s\"\nFor:\n\"%s\"\nGot:\n\"%s\"", $text, $json, var_export($result, true)));
         } catch (ParsingException $e) {
             $this->assertContains($text, $e->getMessage());
         }
@@ -231,11 +223,11 @@ class JsonFileTest extends \PHPUnit_Framework_TestCase
     {
         $file = new JsonFile('composer.json');
 
+        $json = str_replace("\r", '', $json);
         if (null === $options) {
             $this->assertEquals($json, $file->encode($data));
         } else {
             $this->assertEquals($json, $file->encode($data, $options));
         }
     }
-
 }

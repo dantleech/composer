@@ -13,6 +13,7 @@
 namespace Composer\Util;
 
 use Symfony\Component\Process\Process;
+use Symfony\Component\Process\ProcessUtils;
 use Composer\IO\IOInterface;
 
 /**
@@ -43,13 +44,19 @@ class ProcessExecutor
     public function execute($command, &$output = null, $cwd = null)
     {
         if ($this->io && $this->io->isDebug()) {
-            $safeCommand = preg_replace('{(://[^:/\s]+:)[^@\s/]+}i', '$1****', $command);
-            $this->io->write('Executing command ('.($cwd ?: 'CWD').'): '.$safeCommand);
+            $safeCommand = preg_replace_callback('{(://)(?P<user>[^:/\s]+):(?P<password>[^@\s/]+)}i', function ($m) {
+                if (preg_match('{^[a-f0-9]{12,}$}', $m['user'])) {
+                    return '://***:***';
+                }
+
+                return '://'.$m['user'].':***';
+            }, $command);
+            $this->io->writeError('Executing command ('.($cwd ?: 'CWD').'): '.$safeCommand);
         }
 
         // make sure that null translate to the proper directory in case the dir is a symlink
         // and we call a git command, because msysgit does not handle symlinks properly
-        if (null === $cwd && defined('PHP_WINDOWS_VERSION_BUILD') && false !== strpos($command, 'git') && getcwd()) {
+        if (null === $cwd && Platform::isWindows() && false !== strpos($command, 'git') && getcwd()) {
             $cwd = realpath(getcwd());
         }
 
@@ -92,7 +99,13 @@ class ProcessExecutor
             return;
         }
 
-        echo $buffer;
+        if($this->io == null) {
+            echo $buffer;
+        } else {
+            // output the buffer through Composer's IOInterface to ensure that
+            // things like progress bars are handled correctly.
+            $this->io->write(rtrim($buffer));
+        };
     }
 
     public static function getTimeout()
@@ -103,5 +116,17 @@ class ProcessExecutor
     public static function setTimeout($timeout)
     {
         static::$timeout = $timeout;
+    }
+
+    /**
+     * Escapes a string to be used as a shell argument.
+     *
+     * @param string $argument The argument that will be escaped
+     *
+     * @return string The escaped argument
+     */
+    public static function escape($argument)
+    {
+        return ProcessUtils::escapeArgument($argument);
     }
 }

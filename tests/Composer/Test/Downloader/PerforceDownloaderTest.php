@@ -14,16 +14,19 @@ namespace Composer\Test\Downloader;
 
 use Composer\Downloader\PerforceDownloader;
 use Composer\Config;
+use Composer\IO\WorkTracker\Formatter\EmptyFormatter;
 use Composer\Repository\VcsRepository;
 use Composer\IO\IOInterface;
+use Composer\TestCase;
+use Composer\Util\Filesystem;
 
 /**
  * @author Matt Whittom <Matt.Whittom@veteransunited.com>
  */
-class PerforceDownloaderTest extends \PHPUnit_Framework_TestCase
+class PerforceDownloaderTest extends TestCase
 {
-
     protected $config;
+    /** @var PerforceDownloader */
     protected $downloader;
     protected $io;
     protected $package;
@@ -34,7 +37,7 @@ class PerforceDownloaderTest extends \PHPUnit_Framework_TestCase
 
     protected function setUp()
     {
-        $this->testPath        = sys_get_temp_dir() . '/composer-test';
+        $this->testPath        = $this->getUniqueTmpDirectory();
         $this->repoConfig      = $this->getRepoConfig();
         $this->config          = $this->getConfig();
         $this->io              = $this->getMockIoInterface();
@@ -52,7 +55,10 @@ class PerforceDownloaderTest extends \PHPUnit_Framework_TestCase
         $this->io         = null;
         $this->config     = null;
         $this->repoConfig = null;
-        $this->testPath   = null;
+        if (is_dir($this->testPath)) {
+            $fs = new Filesystem;
+            $fs->removeDirectory($this->testPath);
+        }
     }
 
     protected function getMockProcessExecutor()
@@ -121,12 +127,12 @@ class PerforceDownloaderTest extends \PHPUnit_Framework_TestCase
         $ref = 'SOURCE_REF@123';
         $label = 123;
         $this->package->expects($this->once())->method('getSourceReference')->will($this->returnValue($ref));
-        $this->io->expects($this->once())->method('write')->with($this->stringContains('Cloning '.$ref));
+        $this->io->expects($this->once())->method('writeError')->with($this->stringContains('Cloning '.$ref));
         $perforceMethods = array('setStream', 'p4Login', 'writeP4ClientSpec', 'connectClient', 'syncCodeBase', 'cleanupClientSpec');
         $perforce = $this->getMockBuilder('Composer\Util\Perforce', $perforceMethods)->disableOriginalConstructor()->getMock();
         $perforce->expects($this->at(0))->method('initializePath')->with($this->equalTo($this->testPath));
         $perforce->expects($this->at(1))->method('setStream')->with($this->equalTo($ref));
-        $perforce->expects($this->at(2))->method('p4Login')->with($this->identicalTo($this->io));
+        $perforce->expects($this->at(2))->method('p4Login');
         $perforce->expects($this->at(3))->method('writeP4ClientSpec');
         $perforce->expects($this->at(4))->method('connectClient');
         $perforce->expects($this->at(5))->method('syncCodeBase')->with($label);
@@ -144,12 +150,12 @@ class PerforceDownloaderTest extends \PHPUnit_Framework_TestCase
         $ref = 'SOURCE_REF';
         $label = null;
         $this->package->expects($this->once())->method('getSourceReference')->will($this->returnValue($ref));
-        $this->io->expects($this->once())->method('write')->with($this->stringContains('Cloning '.$ref));
+        $this->io->expects($this->once())->method('writeError')->with($this->stringContains('Cloning '.$ref));
         $perforceMethods = array('setStream', 'p4Login', 'writeP4ClientSpec', 'connectClient', 'syncCodeBase', 'cleanupClientSpec');
         $perforce = $this->getMockBuilder('Composer\Util\Perforce', $perforceMethods)->disableOriginalConstructor()->getMock();
         $perforce->expects($this->at(0))->method('initializePath')->with($this->equalTo($this->testPath));
         $perforce->expects($this->at(1))->method('setStream')->with($this->equalTo($ref));
-        $perforce->expects($this->at(2))->method('p4Login')->with($this->identicalTo($this->io));
+        $perforce->expects($this->at(2))->method('p4Login');
         $perforce->expects($this->at(3))->method('writeP4ClientSpec');
         $perforce->expects($this->at(4))->method('connectClient');
         $perforce->expects($this->at(5))->method('syncCodeBase')->with($label);
