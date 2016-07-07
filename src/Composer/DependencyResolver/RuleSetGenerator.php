@@ -280,7 +280,7 @@ class RuleSetGenerator
 
     protected function whitelistFromJobs()
     {
-        $this->workTracker->createBound('Whitelisting from jobs', count($this->jobs));
+        $this->workTracker->createUnbound('Whitelisting from jobs');
         foreach ($this->jobs as $job) {
             switch ($job['cmd']) {
                 case 'install':
@@ -290,7 +290,6 @@ class RuleSetGenerator
                     }
                     break;
             }
-            $this->workTracker->ping();
         }
 
         $this->workTracker->complete();
@@ -298,7 +297,7 @@ class RuleSetGenerator
 
     protected function addRulesForJobs($ignorePlatformReqs)
     {
-        $this->workTracker->createBound('Add rules for jobs', count($this->jobs));
+        $this->workTracker->createUnbound('Add rules for jobs');
         foreach ($this->jobs as $job) {
             switch ($job['cmd']) {
                 case 'install':
@@ -328,7 +327,6 @@ class RuleSetGenerator
                     }
                     break;
             }
-            $this->workTracker->ping();
         }
 
         $this->workTracker->complete();

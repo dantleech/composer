@@ -3,7 +3,7 @@
 namespace Composer\IO\WorkTracker;
 
 /**
- * Work tracker representing a piece of work with a 
+ * Work tracker representing a piece of work with a
  * known number of steps
  *
  * @author Daniel Leech <daniel@dantleech.com>
@@ -29,9 +29,21 @@ class BoundWorkTracker extends AbstractWorkTracker
      *
      * @return integer
      */
-    public function getMax() 
+    public function getMax()
     {
         return $this->max;
     }
-    
+
+    /**
+     * Manually sets the 'ping count'.
+     */
+    public function setProgress($amount)
+    {
+        if($this->pingCount != $amount) {
+            $this->pingCount = $amount;
+            $this->formatter->ping($this);
+        }
+        $this->lastPingTime = microtime(true);
+    }
+
 }

@@ -263,7 +263,7 @@ class Installer
             if ($this->update) {
                 $this->io->getWorkTracker()->createBound('Consolidating changes', 1);
 
-                $localRepo->reload();)
+                $localRepo->reload();
 
                 $platformReqs = $this->extractPlatformRequirements($this->package->getRequires());
                 $platformDevReqs = $this->extractPlatformRequirements($this->package->getDevRequires());
@@ -375,7 +375,7 @@ class Installer
         );
 
         $this->io->writeError('<info>Loading composer repositories with package information</info>');
-        $workTracker->createBound('Loading composer repositories with package information', $installFromLock ? 1 : 2);
+        $workTracker->createBound('Loading composer repositories with package information', $this->update ? 2 : 1);
 
         // creating repository pool
         $policy = $this->createPolicy();
@@ -408,7 +408,7 @@ class Installer
             // remove unstable packages from the localRepo if they don't match the current stability settings
             $removedUnstablePackages = array();
             $packages = $localRepo->getPackages();
-            $workTracker->createBound('Removing unstable packages from the local repository (if they don\'t match the current stablitity settings)', count($packages));
+            $workTracker->createUnbound('Removing unstable packages from the local repository (if they don\'t match the current stablitity settings)');
             foreach ($packages as $package) {
                 if (
                     !$pool->isPackageAcceptable($package->getNames(), $package->getStability())
@@ -417,16 +417,15 @@ class Installer
                     $removedUnstablePackages[$package->getName()] = true;
                     $request->remove($package->getName(), new Constraint('=', $package->getVersion()));
                 }
-                $workTracker->ping();
             }
             $workTracker->complete();
 
+            $links = array_merge($this->package->getRequires(), $this->package->getDevRequires());
+
             $this->io->writeError('<info>Updating dependencies'.($this->devMode ? ' (including require-dev)' : '').'</info>');
-            $workTracker->createBound('Updating dependencies'.($withDevReqs?' (including require-dev)':''), count($links));
+            $workTracker->createBound('Updating dependencies'.($this->devMode ?' (including require-dev)':''), count($links));
 
             $request->updateAll();
-
-            $links = array_merge($this->package->getRequires(), $this->package->getDevRequires());
 
             foreach ($links as $link) {
                 $request->install($link->getTarget(), $link->getConstraint());
@@ -479,8 +478,8 @@ class Installer
 
             $packages = $lockedRepository->getPackages();
 
-            $this->io->writeError('<info>Installing dependencies'.($withDevReqs?' (including require-dev)':'').' from lock file </info>');
-            $workTracker->createBound('Installing dependencies'.($withDevReqs?' (including require-dev)':'').' from lock file', count($packages));
+            $this->io->writeError('<info>Installing dependencies'.($this->devMode?' (including require-dev)':'').' from lock file </info>');
+            $workTracker->createBound('Installing dependencies'.($this->devMode?' (including require-dev)':'').' from lock file', count($packages));
 
             foreach ($packages as $package) {
                 $version = $package->getVersion();
@@ -494,8 +493,9 @@ class Installer
             }
             $workTracker->complete();
 
-            $workTracker->createBound('Installing dependencies'.($withDevReqs?' (including require-dev)':''), count($links));
-            foreach ($this->locker->getPlatformRequirements($this->devMode) as $link) {
+            $links = $this->locker->getPlatformRequirements($this->devMode);
+            $workTracker->createBound('Installing dependencies'.($this->devMode?' (including require-dev)':''), count($links));
+            foreach($links as $link) {
                 $request->install($link->getTarget(), $link->getConstraint());
                 $workTracker->ping();
             }

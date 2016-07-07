@@ -77,7 +77,7 @@ class Solver
         $this->policy = $policy;
         $this->pool = $pool;
         $this->installed = $installed;
-        $this->ruleSetGenerator = new RuleSetGenerator($policy, $pool, $workTracker);
+        $this->ruleSetGenerator = new RuleSetGenerator($policy, $pool, $this->workTracker);
     }
 
     /**
@@ -95,9 +95,8 @@ class Solver
         $decisionStart = count($this->decisions) - 1;
 
         $rulesCount = count($this->rules);
-        $this->workTracker->createBound('Make assertion rule decisions', $rulesCount);
+        $this->workTracker->createUnbound('Make assertion rule decisions');
         for ($ruleIndex = 0; $ruleIndex < $rulesCount; $ruleIndex++) {
-            $this->workTracker->ping();
             $rule = $this->rules->ruleById[$ruleIndex];
 
             if (!$rule->isAssertion() || $rule->isDisabled()) {
@@ -161,7 +160,6 @@ class Solver
             $this->decisions->resetToOffset($decisionStart);
             $ruleIndex = -1;
         }
-
         $this->workTracker->complete();
     }
 

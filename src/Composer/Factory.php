@@ -259,9 +259,9 @@ class Factory
      */
     public function createComposer(IOInterface $io, $localConfig = null, $disablePlugins = false, $cwd = null, $fullLoad = true)
     {
+        $io->getWorkTracker()->createUnbound("Loading Composer");
+        
         $cwd = $cwd ?: getcwd();
-
-        $io->getWorkTracker()->createUnbound('Loading Composer');
 
         // load Composer configuration
         if (null === $localConfig) {
@@ -308,9 +308,7 @@ class Factory
                 $io->getWorkTracker()->createUnbound('Loading config file ' . $localAuthFile->getPath());
                 $config->merge(array('config' => $localAuthFile->read()));
                 $config->setAuthConfigSource(new JsonConfigSource($localAuthFile, true));
-                if($io) {
-                    $io->getWorkTracker()->complete();
-                }
+                $io->getWorkTracker()->complete();
             }
         }
 
@@ -369,9 +367,6 @@ class Factory
         $this->createDefaultInstallers($im, $composer, $io);
 
         if ($fullLoad) {
-            if($io) {
-                $io->getWorkTracker()->createUnbound('Loading plugins');
-            }
             $globalComposer = null;
             if (realpath($config->get('home')) !== $cwd) {
                 $globalComposer = $this->createGlobalComposer($io, $config, $disablePlugins);
@@ -393,8 +388,6 @@ class Factory
             $composer->setLocker($locker);
         }
 
-        $io->getWorkTracker()->complete();
-
         if ($fullLoad) {
             $initEvent = new Event(PluginEvents::INIT);
             $composer->getEventDispatcher()->dispatch($initEvent->getName(), $initEvent);
@@ -405,6 +398,8 @@ class Factory
                 $this->purgePackages($rm->getLocalRepository(), $im);
             }
         }
+
+        $io->getWorkTracker()->complete();
 
         return $composer;
     }
@@ -440,6 +435,7 @@ class Factory
         try {
             $composer = self::createComposer($io, $config->get('home') . '/composer.json', $disablePlugins, $config->get('home'), $fullLoad);
         } catch (\Exception $e) {
+            $io->getWorkTracker()->complete();
             $io->writeError('Failed to initialize global composer: '.$e->getMessage(), true, IOInterface::DEBUG);
         }
 

@@ -83,7 +83,15 @@ class RemoteFilesystem
      */
     public function copy($originUrl, $fileUrl, $fileName, $progress = true, $options = array())
     {
-        return $this->get($originUrl, $fileUrl, $options, $fileName, $progress);
+        $this->io->getWorkTracker()->createBound((substr($fileUrl, 0, 4) === 'http' ? 'Downloading ' : 'Reading ') . $fileUrl, 100);
+        try {
+            $d = $this->get($originUrl, $fileUrl, $options, $fileName, $progress);
+            $this->io->getWorkTracker()->complete();
+            return $d;
+        } catch(\Exception $e) {
+            $this->io->getWorkTracker()->complete();
+            throw $e;
+        }
     }
 
     /**
@@ -98,7 +106,15 @@ class RemoteFilesystem
      */
     public function getContents($originUrl, $fileUrl, $progress = true, $options = array())
     {
-        return $this->get($originUrl, $fileUrl, $options, null, $progress);
+        $this->io->getWorkTracker()->createBound((substr($fileUrl, 0, 4) === 'http' ? 'Downloading ' : 'Reading ') . $fileUrl, 100);
+        try {
+            $d = $this->get($originUrl, $fileUrl, $options, null, $progress);
+            $this->io->getWorkTracker()->complete();
+            return $d;
+        } catch(\Exception $e) {
+            $this->io->getWorkTracker()->complete();
+            throw $e;
+        }
     }
 
     /**
@@ -474,9 +490,6 @@ class RemoteFilesystem
                 $this->storeAuth = false;
             }
 
-            if($this->io->isDebug()) {
-                $this->io->getWorkTracker()->complete();
-            }
             return $result;
         }
 
@@ -503,9 +516,6 @@ class RemoteFilesystem
             $this->lastHeaders = $http_response_header;
         }
 
-        if($this->io->isDebug()) {
-            $this->io->getWorkTracker()->complete();
-        }
         return $result;
     }
 
@@ -559,16 +569,17 @@ class RemoteFilesystem
                 break;
 
             case STREAM_NOTIFY_PROGRESS:
+                if ($this->bytesMax > 0) {
+                    $progression = min(100, round($bytesTransferred / $this->bytesMax * 100));
+
+                    $this->io->getWorkTracker()->getWorkTracker()->setProgress($progression);
+                }
                 if ($this->bytesMax > 0 && $this->progress) {
                     $progression = min(100, round($bytesTransferred / $this->bytesMax * 100));
 
                     if ((0 === $progression % 5) && 100 !== $progression && $progression !== $this->lastProgress) {
-                        //$this->lastProgress = $progression;
-                        while($this->lastProgress < $progression) {
-                            $this->io->getWorkTracker()->ping();
-                            $this->lastProgress++;
-                        }
-                        //$this->io->overwriteError("    Downloading: <comment>$progression%</comment>", false);
+                        $this->lastProgress = $progression;
+                        $this->io->overwriteError("    Downloading: <comment>$progression%</comment>", false);
                     }
                 }
                 break;

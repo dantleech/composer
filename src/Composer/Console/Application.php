@@ -14,11 +14,13 @@ namespace Composer\Console;
 
 use Composer\IO\WorkTracker\Formatter\DebugFormatter;
 use Composer\IO\WorkTracker\Formatter\EmptyFormatter;
+use Composer\IO\WorkTracker\Formatter\HeadingFormatter;
 use Composer\IO\WorkTracker\Formatter\GlobalProgressBarFormatter;
 use Composer\IO\WorkTracker\Formatter\MultiProgressFormatter;
 use Composer\IO\WorkTracker\Formatter\NotifyFormatterConsoleOutput;
 use Composer\IO\WorkTracker\Formatter\NotifyFormatterOutput;
 use Composer\IO\WorkTracker\Formatter\ProgressBarFormatter;
+use Composer\IO\WorkTracker\Formatter\InteractsWithConsoleOutput;
 use Composer\IO\WorkTracker\UnboundWorkTracker;
 use Composer\IO\WorkTracker\WorkTrackerInterface;
 use InvalidArgumentException;
@@ -434,7 +436,7 @@ class Application extends BaseApplication
     protected function getDefaultInputDefinition()
     {
         $definition = parent::getDefaultInputDefinition();
-        $definition->addOption(new InputOption('--progress', null, InputOption::VALUE_REQUIRED, 'Format for progress, values <info>multi</info>, <info>debug</info>, <info>progress-bar</info>, <info>global-progress-bar</info>, <info>global-progress-bar-no-log</info>', 'empty'));
+        $definition->addOption(new InputOption('--progress', null, InputOption::VALUE_REQUIRED, 'Format for progress, values <info>debug</info>, <info>progress-bar</info>, <info>global-progress-bar</info>, <info>global-progress-bar-no-log</info>', 'empty'));
         $definition->addOption(new InputOption('--profile', null, InputOption::VALUE_NONE, 'Display timing and memory usage information'));
         $definition->addOption(new InputOption('--no-plugins', null, InputOption::VALUE_NONE, 'Whether to disable plugins.'));
         $definition->addOption(new InputOption('--working-dir', '-d', InputOption::VALUE_REQUIRED, 'If specified, use the given directory as working directory.'));
@@ -453,17 +455,9 @@ class Application extends BaseApplication
     {
         $pretty = $input->getParameterOption('--progress');
         if ($pretty == 'debug') {
-            return new DebugFormatter($output);
-        } else if($pretty == 'multi') {
-            return new MultiProgressFormatter($output);
+            $formatter = new DebugFormatter($output);
         } else if($pretty == 'progress-bar') {
             $formatter = new ProgressBarFormatter($output);
-            if($output instanceof ConsoleOutputInterface) {
-                $output = new NotifyFormatterConsoleOutput($output, $formatter);
-            } else {
-                $output = new NotifyFormatterOutput($output, $formatter);
-            }
-            return $formatter;
         } else if($pretty == 'global-progress-bar' || $pretty == 'global-progress-bar-no-log') {
             $name = str_replace(' ', '', ucwords(str_replace(array('-', '_'), ' ', $input->getFirstArgument())));
             $name = 'Composer\Command\\' . $name . 'Command';
@@ -477,17 +471,21 @@ class Application extends BaseApplication
             } else {
                 $formatter = new GlobalProgressBarFormatter($output, $heuristics);
             }
+        } else if($pretty == 'empty') {
+            $formatter = new EmptyFormatter($output);
+        } else {
+            throw new InvalidArgumentException('Invalid option: `--progress=' . $pretty . '`');
+        }
+
+        if($formatter instanceof InteractsWithConsoleOutput) {
             if($output instanceof ConsoleOutputInterface) {
                 $output = new NotifyFormatterConsoleOutput($output, $formatter);
             } else {
                 $output = new NotifyFormatterOutput($output, $formatter);
             }
-            return $formatter;
-        } else if($pretty == 'empty') {
-            return new EmptyFormatter($output);
-        } else {
-            throw new InvalidArgumentException('Invalid option: `--progress=' . $pretty . '`');
         }
+
+        return $formatter;
     }
 
     private function getPluginCommands()
